@@ -1,0 +1,9 @@
+*.[oa]
+*.dll
+*.zip
+*.tar.gz
+*.tar
+*.tgz
+trash/
+*.pyc
+examples/*.txt
