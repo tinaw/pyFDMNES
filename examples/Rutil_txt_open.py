@@ -32,24 +32,23 @@ sim.FDMNESfile()
 
 sim.retrieve()
 
-dafs = sim.get_dafs([0,0,0], 1,2,45.)
-plt.title("XANES")
+dafs = sim.get_dafs((0,0,2), 1,2,45.,conv=False)
+"""
+plt.title("DAFS  %s"%sim.index)
 plt.xlabel("Energy")
 plt.ylabel("Intensity")
-plt.legend()
-plt.figure(0)
-plt.plot (dafs[:,0], dafs[:,(sim.column[0])], label = "%s"%sim.index)
-plt.title("XANES")
-plt.xlabel("Energy")
-plt.ylabel("Intensity")
-plt.legend()
-plt.figure(1)
-plt.plot(dafs[:,0], dafs[:,(sim.column[1])], label = "%s"%sim.index)
+plt.plot (dafs[:,0], dafs[:,(sim.column_real)], label = sim.index_real)
+plt.plot (dafs[:,0], dafs[:,(sim.column_im)], label = sim.index_im)
+plt.legend(loc = 3)
 plt.show()
 
-"""dafs = sim.get_dafs([0,0,0], conv = False)
-y = self.
-plt.plot (dafs[:,0], dafs[:,y], label = "")
-plt.legend()
-plt.show()"""
+
+plt.title("DAFS %s"%sim.index)
+plt.xlabel("Energy")
+plt.ylabel("Intensity")
+y = sim.index
+plt.plot (dafs[:,0], dafs[:,(sim.column)], label = sim.index)
+plt.legend(loc = 2)
+plt.show()
+"""
 

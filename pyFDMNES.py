@@ -520,74 +520,63 @@ class pyFDMNES(object):
         return data
         
         
-    def get_dafs (self, Reflex, pol_in=None, pol_out=None, azimuth=None, conv = True):
+    def get_dafs (self, Reflex, pol_in, pol_out, azimuth, conv = True):
         
         self.Reflex = self.Reflex.round(0)
        
         if conv == True:
             fname = self.new_name + "_conv.txt"  
             skiprows = 1  
-            
-            fobject = open(fname,"r") 
-            lines = fobject.readlines()
-            fobject.close()
-            headline = lines[0]
-            headline_keywords = headline.split()
-            
-            Reflex = np.array(Reflex)
-            columns_a = (self.Reflex[:,0:3] == Reflex).all(1)
-            i = 0
-                  
-            if pol_in != None:
-                col_pol_in = (self.Reflex[:,3] == pol_in)
-                col_pol_in_a = np.where(col_pol_in)[0]
-                columns_a *= col_pol_in_a
-                print col_pol_in
-            if pol_out != None:
-                col_pol_out = (self.Reflex[:,4] == pol_out)
-                col_pol_out_a = np.where(col_pol_out)[0]
-                columns_a *= col_pol_out
-                print col_pol_out_a
-            if azimuth != None:
-                col_azimuth = (self.Reflex[:,5].round(0) == np.round(azimuth))
-                col_azimuth_a = np.where(col_azimuth)[0]
-                columns_a *= col_azimuth
-                print col_azimuth_a
-            
-            columns = np.where(columns_a)[0]
-            self.column = columns+2
-            print self.column
-            while i < len(self.column):
-                a = self.column[i]
-                self.index = headline_keywords[a]
-                i += 1
-                print self.index
-            
+            a = 0
+
         else:
             fname = self.new_name + ".txt"
             skiprows = 4
+            a = 3
+                   
+        fobject = open(fname,"r") 
+        lines = fobject.readlines()
+        fobject.close()
+        headline = lines[a]
+        headline_keywords = headline.split()
+            
+        Reflex_a = np.array(Reflex)
+        columns = (self.Reflex[:,0:3] == Reflex_a).all(1)
+                  
+        if pol_in != None:
+            col_pol_in = (self.Reflex[:,3] == pol_in)
+            columns *= col_pol_in
+        if pol_out != None:
+            col_pol_out = (self.Reflex[:,4] == pol_out)
+            columns *= col_pol_out
+        if azimuth != None:
+            col_azimuth = (self.Reflex[:,5].round(0) == np.round(azimuth))
+            columns *= col_azimuth
+            
+        columns_a = np.where(columns)[0]
         
-    
-    #    Reflex_a = Reflex + pol_in + pol_out + azimuth
-    #    Refelx_b = Reflex_a.round(0)
-            
+        if len(columns_a) == 0:
+            self.Reflex = np.append(Reflex_a, np.array([pol_out, pol_in, azimuth]))
+            print self.Reflex
+          #  self.Filout 
+           # self.FDMNESfile 
+           # self.get_dafs         
+        else:
+            if conv == True:
+                self.column = columns_a+2
+                self.index = headline_keywords[self.column]
+            else:
+                column = (2*columns_a+2)
+                index = headline_keywords[column]
+                index_a = index.replace("r","I")
+                self.index = index_a+" without convolution"
+                
+                self.column_real = column
+                self.index_real = headline_keywords[self.column_real]
+                
+                self.column_im = column + 1
+                self.index_im = headline_keywords[self.column_im]
 
-        #    column = np.where() 
-          #  print column
-            
-       # self.column = headline_keywords[column]
-               
-        #colname = "I(%i%i%i)%i%i_%i"%tuple(np.round(Reflex))
-       # columns = []
-    #  for Reflex in self.Reflex:
-         #   hkl = Reflex[0:3]
-          #  print hkl.splitlines()
-      #      
-       # for hkl in headline:
-            
-        #    index = headline_keywords.index(hkl)
-         #   print index
-          #  self.column = lines.split[index]
             
         dafs = np.loadtxt(fname, skiprows = skiprows)
         return dafs
