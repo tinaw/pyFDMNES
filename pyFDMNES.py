@@ -15,7 +15,9 @@ import string
 
 
 flags = ["Green","Magnetism", "Density","Self-absorption","cartesian",
-         "nodipole"]
+         "nodipole"] 
+         
+conv_flags = ["Gamma_fix", "Fprime", "Fprime_atom", "Estart","Efermi"]
 
 SCF_flags = ["N_self","P_self","R_self", "Delta_E_conv", "SCF_exc",
              "SCF_mag_free"]
@@ -25,7 +27,7 @@ Multi_Exp_flags = ["Quadrupole","Octupole","Dimag", "E1E2","E1E3","E2E2","E3E3",
 
 EXEfile = os.path.abspath('\\\\win.desy.de\\home\\weiget\\My Documents\\fdmnes_2013_05_27\\fdmnes\\fdmnes.exe')
 
-def array2str(array, precision=6):
+def array2str(array, precision=4):
     array = np.array(array)
     if array.ndim<2:
             array = array[:,np.newaxis].T
@@ -74,17 +76,17 @@ class pyFDMNES(object):
         self.Crystal = True
         self.Radius = 2.5
         self.Range = "-10. 0.1 -2 0.2 0. 0.5 20. 1. 40."
-        self.convolution = True
         self.Polarise = []
         self.Reflex = []
         self.Atom = {}
         self.dafs = []
         self.Rpotmax = 0
-        self.Efermi = 0
-        self.Estart = 0
-        self.Run_File = 1
+        self.Run_File = 2
         self.extract = False
         self.Absorber = ()
+        self.convolution = False
+        self.Efermi = 0
+        self.Estart = 0
         
         if str(structure).isdigit():
             int(structure)
@@ -307,17 +309,9 @@ class pyFDMNES(object):
                     atm_pos = array2str(self.positions[label])
                     f.write("%s" %atm_pos)
     
-            if self.convolution == True: f.write("\nConvolution \n\n")
-    
-            if self.Efermi != 0: 
-                f.write("Efermi \n %f\n\n" %self.Efermi)
-                
-            if self.Estart != 0: 
-                f.write("EStart \n %f\n\n" %self.Estart)
-                
             if self.extract == True and os.path.exists(self.bav):
                 bav_file = os.path.abspath(self.bav)
-                f.write("extract\n %s\n" %bav_file)
+                f.write("\nextract\n %s\n" %bav_file)
                 
                 if hasattr(self,"ext_Absorber") and len(self.ext_Absorber)>0:
                     f.write("Absorber\n%s \n\n" %self.ext_Absorber)
@@ -329,19 +323,26 @@ class pyFDMNES(object):
                 if hasattr(self,"Extractsym") and len(self.Extractsym)>0:
                    f.write("Extractsym\n%s \n\n" %self.Extractsym)
                  
-                if hasattr(self,"Reflex") and len(self.Reflex)>0:
-                    Reflex_val = array2str(self.Reflex)
+                if hasattr(self,"Reflex") and len(self.Reflex)>0: 
+                    Reflex_val = array2str(self.Reflex, precision=0)
                     f.write("\nRXS\n%s\n" %Reflex_val)
-
+                
                 if hasattr(self,"Polarise") and len(self.Polarise)>0:
                     Polarise_val = array2str(self.Polarise)
-                    f.write("Polarise\n%s \n" %Polarise_val)
+                    f.write("\nPolarise\n%s\n" %Polarise_val)
                     
                 if hasattr(self,"dafs") and len(self.dafs)>0:
                     dafs_val = array2str(self.dafs)
-                    f.write("Atom\n%s \n" %dafs_val)
-                      
-            f.write("End")
+                    f.write("\nAtom\n%s \n" %dafs_val)
+
+            if self.convolution == True: 
+                if self.Efermi != 0: 
+                   f.write("Efermi \n %f\n\n" %self.Efermi)
+                
+                if self.Estart != 0: 
+                    f.write("EStart \n %f\n\n" %self.Estart)
+                
+            f.write("\nConvolution \n\nEnd")
     
        # if self.R_self != self.Radius: oder 3.5???
             # f.write("...")
@@ -352,6 +353,7 @@ class pyFDMNES(object):
                 f.close()
             
     def FDMNESfile (self):
+        
         assert hasattr(self, "path"), "Attribute `path` has not been defined. Try self.Filout() first"
         self.workdir = os.getcwd()
         
@@ -368,7 +370,13 @@ class pyFDMNES(object):
         
         else: 
             print "Written fdmfile was successfully"
-            f.write("\n%i\n\n%s\n" %(self.Run_File,Input))
+            
+            if self.convolution == True:
+                self.Run_File = 1
+                f.write("\n%i\n\n%s\n" %(self.Run_File,Input))
+            else:
+                Input_conv = os.path.relpath(self.conv_path, os.path.dirname(EXEfile))
+                f.write("\n%i\n\n%s\n%s\n" %(self.Run_File,Input,Input_conv))
         
         finally: 
             f.close()
@@ -514,7 +522,7 @@ class pyFDMNES(object):
             skiprows = 1
         else:
             fname = self.new_name + ".txt"
-            skiprows = 2
+            skiprows = 4
         
         data = np.loadtxt(fname, skiprows = skiprows)
         return data
@@ -523,14 +531,15 @@ class pyFDMNES(object):
     def get_dafs (self, Reflex, pol_in, pol_out, azimuth, conv = True):
         
         self.Reflex = self.Reflex.round(0)
+        
        
         if conv == True:
-            fname = self.new_name + "_conv.txt"  
+            fname = os.path.abspath(self.new_name) + "_conv.txt"  
             skiprows = 1  
             a = 0
 
         else:
-            fname = self.new_name + ".txt"
+            fname = os.path.abspath(self.new_name) + ".txt"
             skiprows = 4
             a = 3
                    
@@ -541,26 +550,38 @@ class pyFDMNES(object):
         headline_keywords = headline.split()
             
         Reflex_a = np.array(Reflex)
-        columns = (self.Reflex[:,0:3] == Reflex_a).all(1)
-                  
-        if pol_in != None:
-            col_pol_in = (self.Reflex[:,3] == pol_in)
+        if np.ndim(self.Reflex)>1:
+            columns = (self.Reflex[:,0:3] == Reflex).all(1)
+        
+            if pol_in != None:
+                col_pol_in = (self.Reflex[:,3] == pol_in)
+                columns *= col_pol_in
+            if pol_out != None:
+                col_pol_out = (self.Reflex[:,4] == pol_out)
+                columns *= col_pol_out
+            if azimuth != None:
+                col_azimuth = (self.Reflex[:,5].round(0) == np.round(azimuth))
+                columns *= col_azimuth
+                
+        else:
+            columns = (self.Reflex[0:3] == Reflex).all(0)
+            
+            col_pol_in = (self.Reflex[3] == pol_in)
             columns *= col_pol_in
-        if pol_out != None:
-            col_pol_out = (self.Reflex[:,4] == pol_out)
+            
+            col_pol_out = (self.Reflex[4] == pol_out)
             columns *= col_pol_out
-        if azimuth != None:
-            col_azimuth = (self.Reflex[:,5].round(0) == np.round(azimuth))
+            
+            col_azimuth = (self.Reflex[5].round(0) == np.round(azimuth))
             columns *= col_azimuth
             
         columns_a = np.where(columns)[0]
         
         if len(columns_a) == 0:
-            self.Reflex = np.append(Reflex_a, np.array([pol_out, pol_in, azimuth]))
-            print self.Reflex
-          #  self.Filout 
-           # self.FDMNESfile 
-           # self.get_dafs         
+            Reflex_new = np.append(Reflex_a, np.array([pol_out, pol_in, azimuth]))
+            self.Reflex = Reflex_new
+            return self.Reflex
+
         else:
             if conv == True:
                 self.column = columns_a+2
@@ -580,4 +601,43 @@ class pyFDMNES(object):
             
         dafs = np.loadtxt(fname, skiprows = skiprows)
         return dafs
+        
+    def do_convolution(self, path):
+        
+        self.conv_path = os.path.realpath(path)
+    
+        try: f = open(path, "w")
+        except IOError:
+            print "Error: No new file open"
+        
+        else: 
+            print "Written content in the file successfully"
+            
+            f.write("Calculation \n")
+            filout = self.new_path + ".txt"
+            f.write("%s \n\n" %filout)
+            
+     #       if self.scan = True:
+     #           self.scan = self.new_path + "_scan.txt"
+     #           f.write("Scan \n %s\n\n" %scan)
+
+            scan_conv = self.new_path + "_scan_conv.txt"
+            f.write("Scan_conv \n %s\n\n" %scan_conv)
+            
+            f.write("Convolution \n\n")
+            
+            f.write("check_conv\n\n")
+        
+            for key in conv_flags:
+                if hasattr(self,key):
+                    value =  getattr(self,key)
+                    if isinstance(value, bool):
+                        f.write("%s \n" %key)
+                    else:
+                        f.write("%s \n %f \n" %(key, getattr(self, key))) 
+
+            f.write("\nEnd")
+                
+        finally: 
+                f.close()
         
