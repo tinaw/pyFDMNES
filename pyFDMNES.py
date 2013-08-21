@@ -17,7 +17,10 @@ import string
 flags = ["Green","Magnetism", "Density","Self-absorption","cartesian",
          "nodipole"] 
          
-conv_flags = ["Gamma_fix", "Fprime", "Fprime_atom", "Estart","Efermi"]
+conv_flags = ["Gamma_fix", "Fprime", "Fprime_atom", "Estart","Efermi",
+              "check_conv","Gen_shift", "S0_2", "Selec_core", "Photoemission",
+              "Forbidden","Gaussian", "Seah","Gamma_var", "Gamma_max", "Elarg",
+              "Ecent", "Gamma_hole","Dec"]
 
 SCF_flags = ["N_self","P_self","R_self", "Delta_E_conv", "SCF_exc",
              "SCF_mag_free"]
@@ -86,7 +89,8 @@ class pyFDMNES(object):
         self.Absorber = ()
         self.convolution = False
         self.Efermi = 0
-        self.Estart = 0
+        self.Estart = 0 
+        self.Cal_val = {}
         
         if str(structure).isdigit():
             int(structure)
@@ -531,8 +535,7 @@ class pyFDMNES(object):
     def get_dafs (self, Reflex, pol_in, pol_out, azimuth, conv = True):
         
         self.Reflex = self.Reflex.round(0)
-        
-       
+    
         if conv == True:
             fname = os.path.abspath(self.new_name) + "_conv.txt"  
             skiprows = 1  
@@ -604,40 +607,110 @@ class pyFDMNES(object):
         
     def do_convolution(self, path):
         
-        self.conv_path = os.path.realpath(path)
-    
+        self.conv_path = os.path.abspath(path)
+        EXE = os.path.dirname(EXEfile)
+        rel_conv_name = os.path.relpath(self.conv_path,EXE)
+        
+        
         try: f = open(path, "w")
         except IOError:
             print "Error: No new file open"
         
         else: 
-            print "Written content in the file successfully"
+            print "Written content in the Conv_file successfully"
             
-            f.write("Calculation \n")
-            filout = self.new_path + ".txt"
-            f.write("%s \n\n" %filout)
             
-     #       if self.scan = True:
-     #           self.scan = self.new_path + "_scan.txt"
-     #           f.write("Scan \n %s\n\n" %scan)
+            if hasattr(self, "Cal_val") and len(self.Cal_val)>0:
+                f.write("Calculation\n")
+                key = self.Cal_val.keys()
+                for element in self.Cal_val:
+                    cal_path = os.path.abspath(element) 
+                    Calculation = os.path.relpath(cal_path,EXE)
+                    f.write(" %s\n" %Calculation)
+                    value = self.Cal_val[element]
+                    val = array2str(value, precision=1)
+                   # value = self.Cal_val.values()   
+                    f.write(" %s" %val)
+            else: 
+                f.write("Calculation\n")
+                if hasattr(self,"Calculation"):   
+                    cal_path = os.path.abspath(self.Calculation) 
+                    Calculation = os.path.relpath(cal_path,EXE)
+                    f.write(" %s\n" %Calculation)
+                else: 
+                    Conv_out = rel_conv_name.replace("_inp","_out")
+                    Conv = Conv_out.split("_conv")
+                    Calculation = Conv[0] +".txt"
+                    f.write(" %s\n" %Calculation)
+            
+            if hasattr(self,"Reflex") and len(self.Reflex)>0 and len(self.Reflex[0,:])<6:
+                f.write("\nScan\n")
+                if hasattr(self, "Cal_val"):
+                    for element in key:
+                        Scan = os.path.splitext(Calculation)[0]
+                    scan =  Scan + "_scan.txt"
+                    f.write(" %s\n" %scan)
+                else:
+                    Scan = os.path.splitext(Calculation)[0]
+                    scan =  Scan + "_scan.txt"
+                    f.write(" %s\n" %scan)
+                        
+            if  hasattr(self,"\nScan_conv"):
+                scan_conv =  Scan + "_scan_conv.txt"
+                f.write("\nScan_conv\n %s\n" %scan_conv)
+            
+            f.write("\nConv_out\n")
+            Conv_out = rel_conv_name.replace("inp","out")
+            f.write(" %s \n\n" %Conv_out)
+                    
+            f.write("\nConvolution \n\n")
 
-            scan_conv = self.new_path + "_scan_conv.txt"
-            f.write("Scan_conv \n %s\n\n" %scan_conv)
-            
-            f.write("Convolution \n\n")
-            
-            f.write("check_conv\n\n")
-        
             for key in conv_flags:
                 if hasattr(self,key):
                     value =  getattr(self,key)
                     if isinstance(value, bool):
-                        f.write("%s \n" %key)
+                        f.write("%s\n\n" %key)
                     else:
-                        f.write("%s \n %f \n" %(key, getattr(self, key))) 
+                        f.write("%s\n %f\n\n" %(key, getattr(self, key))) 
+                        
+            if hasattr(self, "Thompson") and len(self.Thompson)>0:
+                self.Thompson = array2str(self.Thompson)
+                f.write("\nThompson\n % \n" %self.Thompson)
+                
+            if hasattr(self, "Table") and len(self.Table)>0:
+                self.Table = array2str(self.Table)
+                f.write("\nTable\n %s\n" %self.Table)
 
             f.write("\nEnd")
                 
         finally: 
                 f.close()
         
+    def checkvars(self):
+        vars_float = ["N_self","P_self","R_self", "Delta_E_conv","Radius",
+                      "Estart","Efermi",]
+        vars_int = ["Run_Fil"]
+        vars_bool = ["Quadrupole","Octupole","Dimag", "E1E2","E1E3","E2E2","E3E3",
+                   "E1M1","M1M1","No_E1E1","No_E2E2","No_E1E2","No_E1E3","Green",
+                   "Magnetism", "Density","Self-absorption","cartesian","nodipole",
+                   "SCF_exc", "SCF_mag_free"]
+        vars_string = ["Range"]
+        
+        for varname in vars_float:
+            if varname in vars_float:
+                setattr(self, varname, float(getattr(self,varname)))
+        
+        for varname in vars_int:
+            if varname in vars_int:
+                setattr(self, varname, int(getattr(self,varname)))
+                
+        for varname in vars_bool:
+            if varname in vars_bool:
+                setattr(self, varname, float(getattr(self,varname)))
+                
+               
+        for varname in vars_string:
+            if varname in vars_string:
+                setattr(self, varname, float(getattr(self,varname)))
+       
+       
