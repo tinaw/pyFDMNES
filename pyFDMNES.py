@@ -14,8 +14,10 @@ import subprocess
 import string
 
 
-flags = ["Green","Magnetism", "Density","Self-absorption","cartesian",
-         "nodipole"] 
+flags = ["Green","Magnetism", "Density","Self_absorption","cartesian",
+         "nodipole","Memory_save"] 
+
+string_flag = ["Hubbard","Edge"]         
          
 conv_flags = ["Gamma_fix", "Fprime", "Fprime_atom", "Estart","Efermi",
               "check_conv","Gen_shift", "S0_2", "Selec_core", "Photoemission",
@@ -45,25 +47,17 @@ def array2str(array, precision=4):
 
 
 class pyFDMNES(object):
+    """ Python programm  for FDMNES application.
+    """
     
     def __init__(self, structure, resonant="", verbose=False):
         """
-            Initializes the crystals unit cell for a given
-            structure in the following steps:
-                - retrieve space group generators for the given space group
-                - calculate real and reciprocal lattice parameters
-                - calculates Matrices B, B_0
-                - calculates real and reciprocal metric tensors G, G_r
+            Calculation of spectra for x-ray absorption spectroscopy with FDMNES for
+            given parameters and structures in the following steps:
+                - compile input file for FDMNES 
+                - process and controll the FDMNES calculation
+                - fit and plot the calculate datas
 
-            Optionally loads a structure from a .cif file.
-            See:
-                Hall SR, Allen FH, Brown ID (1991).
-                "The Crystallographic Information File (CIF):(dafs[:,0], dafs[:,y1], label = "")
-                 a new standard archive file for crystallography".
-                Acta Crystallographica A47 (6): 655-685
-            A list or string of 'resonant' scattering atoms can be given.
-            
-            
             Input parameters:
                 structure : either
                                 - metric (cell dimensions) of the crystal
@@ -78,7 +72,7 @@ class pyFDMNES(object):
         self.occupancy = {}
         self.Crystal = True
         self.Radius = 2.5
-        self.Range = "-10. 0.1 -2 0.2 0. 0.5 20. 1. 40."
+        self.Range = np.array([-10., 0.1, -2, 0.2, 0., 0.5, 20., 1., 40.])
         self.Polarise = []
         self.Reflex = []
         self.Atom = {}
@@ -104,9 +98,9 @@ class pyFDMNES(object):
                  self.Filein(structure)
         
     
-    def add_atom(self, label, position, occupancy=1):
+    def add_atom(self, label, position):
         """
-            Method to fill the asymmetric unit with atoms.
+            Method to give parameters for the FDMNES calculation.
             
             Inputs:
             -------
@@ -114,19 +108,8 @@ class pyFDMNES(object):
                     The label of the atom.
                     It has to be unique and to start with the symbold of the
                     chemical element.
-                position : iterable of length 3
-                    Position of the atom in the basis of the lattice vectors.
-                isotropic : bool
-                    Defines whether the atom is an isotropic scatterer which
-                    is mostly the case far from absorption edges.
-                assume_complex : bool
-                    Defines whether the scalar atomic scattering amplitude shall
-                    be assumed to be complex. This can be left False, since the
-                    calculations are symbolic and values, that will be entered
-                    later, still can be complex.
-                dE : scalar
-                    Sets the shift of the absorption edge for this particular
-                    atom.
+                position : iterable of length 3, string
+                    Postion of the atoms in the structure
         """
         if type(label) is not str: raise TypeError("Invalid label. Need string.")
         if len(position) is not 3: raise TypeError("Enter 3D position object!")
@@ -145,22 +128,28 @@ class pyFDMNES(object):
                              "Chemical element not found in %s"%label)                    
     
         self.atom_num[label] = elements.Z[self.elements[label]]
-        self.occupancy[label] = occupancy
         self.positions[label] = position
         
     def load_cif(self, fname, resonant=""):
-        """
-            Loads a structure from a .cif file.
-            See:
+        """ Method to loads a structure from a .cif file.
+            Read-out parameters are spacegroup number, spacegroup name, 
+            spacegroup origin, metric and atom positions.
+         
+            Input:
+            ------
+            fname: string
+                The name of the .cif file.
+            resonant: string
+                Label of the resonant atom.
+
+            Informations about .cif file:
+            -----------------------------
                 Hall SR, Allen FH, Brown ID (1991).
                 "The Crystallographic Information File (CIF): a new standard 
                 archive file for crystallography".
                 Acta Crystallographica A47 (6): 655-685
-            
-            A list or string of resonant scattering atoms can be given.
-            
         """
-        fobject = open(fname, "r")
+        fobject = open(fname,"r")
         lines = fobject.readlines()
         fobject.close()
         lines.reverse()
@@ -212,6 +201,18 @@ class pyFDMNES(object):
 
 
     def Filout(self, path):
+        """ Method write a input file for the FDMNES calculation.
+            Edit the given structure parameter or parameter of the .cif file.
+            More useful calculation parameters, for example Range and Radius
+            have to given of the user. It is also possible to get parameter from 
+            an exist input file and add to new parameters. For this use the 
+            keyword "extract". 
+         
+            Input:
+            ------
+            path: string
+                Name of the input file.
+        """
         
         self.path = path
         
@@ -241,8 +242,13 @@ class pyFDMNES(object):
                 self.bav = self.new_name + "_bav.txt"
 
         #if hasattr(self, "Range"):
-            if isinstance(self.Range, str) and not self.extract:
-                f.write("Range \n %s \n\n" % self.Range)
+            
+            if hasattr (self,"Range") and not self.extract:
+                if isinstance(self.Range, str):
+                    f.write("Range \n %s \n\n" % self.Range)
+                else:
+                    self.Range = array2str(self.Range)
+                    f.write("Range \n %s \n\n" % self.Range)
         
         #if self.radius == isinstance (float):
             if isinstance(self.Radius, float) and not self.extract:
@@ -259,6 +265,11 @@ class pyFDMNES(object):
                  if hasattr(self,key) and getattr(self,key)==True:
                      f.write("\n%s \n" %key)
             
+            for key in string_flag:
+                if hasattr(self, key): 
+                    value = getattr(self, key)
+                    f.write("\n%s \n %s \n" %(key, value)) 
+                    
                 #if getattr(self,key) == True:
             if hasattr(self, "SCF") and self.SCF and not self.extract:
                 f.write("\nSCF \n")
@@ -270,13 +281,16 @@ class pyFDMNES(object):
                         else:
                             f.write("%s \n %f \n" %(key, getattr(self, key))) 
                 
-            f.write("\nSpgroup \n %i" %self.sg_num)
+            if hasattr(self,"sg_num"):    
+                f.write("\nSpgroup \n %i" %self.sg_num)
             if hasattr(self,"cscode"):
                 f.write("%s\n\n" %self.cscode)
             else:f.write("\n\n")
                 
             if hasattr(self,"Absorber") and len(self.Absorber)>0:
-                f.write("Absorber\n %s \n\n" %self.Absorber)
+                if  not isinstance(self.Absorber, str):
+                    self.Absorber = array2str(self.Absorber)
+                f.write("Absorber\n %s \n" %self.Absorber)
 
             if hasattr(self, "Atom") and len(self.Atom)>0:
                 f.write("Atom\n")
@@ -286,20 +300,25 @@ class pyFDMNES(object):
                     atm_conf = array2str(self.Atom[label])
                     f.write(" %s" %atm_conf)
                 
-            if self.Crystal == True: f.write("\nCrystal \n") 
+            if self.Crystal == True: f.write("\nCrystal \n")
             else: f.write("Molecule \n")
             
             cell = (self.a, self.b, self.c, self.alpha, self.beta, self.gamma)
-            f.write("   %f %f %f %f %f %f\n" %cell)
+            f.write(" %f %f %f %f %f %f\n" %cell)
                                                                
             for label in self.resonant:
                 if len(self.Atom)>0:
                     num = self.Atom.keys().index(label) + 1
                     f.write(" %i " %num)
+                    atm_pos = array2str(self.positions[label])
+                    f.write("%s" %atm_pos)
                 else:
-                    f.write(" %i " %self.atom_num[label])
-                atm_pos = array2str(self.positions[label])
-                f.write("%s" %atm_pos)
+                    if hasattr(self,"pos"):
+                        f.write("%s" %self.pos)
+                    else:    
+                        f.write(" %i " %self.atom_num[label])
+                        atm_pos = array2str(self.positions[label])
+                        f.write("%s" %atm_pos)
                  
             for label in self.positions.iterkeys():
                 if label in self.resonant:
@@ -308,10 +327,15 @@ class pyFDMNES(object):
                     if len(self.Atom)>0:
                         num = self.Atom.keys().index(label) + 1
                         f.write(" %i " %num)
+                        atm_pos = array2str(self.positions[label])
+                        f.write("%s" %atm_pos)
                     else:
-                        f.write(" %i " %self.atom_num[label])
-                    atm_pos = array2str(self.positions[label])
-                    f.write("%s" %atm_pos)
+                        if hasattr(self,"pos"):
+                            f.write("%s" %self.pos)
+                        else:    
+                            f.write(" %i " %self.atom_num[label])
+                            atm_pos = array2str(self.positions[label])
+                            f.write("%s" %atm_pos)
     
             if self.extract == True and os.path.exists(self.bav):
                 bav_file = os.path.abspath(self.bav)
@@ -327,7 +351,7 @@ class pyFDMNES(object):
                 if hasattr(self,"Extractsym") and len(self.Extractsym)>0:
                    f.write("Extractsym\n%s \n\n" %self.Extractsym)
                  
-                if hasattr(self,"Reflex") and len(self.Reflex)>0: 
+                if hasattr(self,"Reflex") and len(self.Reflex)>0:
                     Reflex_val = array2str(self.Reflex, precision=0)
                     f.write("\nRXS\n%s\n" %Reflex_val)
                 
@@ -339,11 +363,11 @@ class pyFDMNES(object):
                     dafs_val = array2str(self.dafs)
                     f.write("\nAtom\n%s \n" %dafs_val)
 
-            if self.convolution == True: 
-                if self.Efermi != 0: 
+            if self.convolution == True:
+                if self.Efermi != 0:
                    f.write("Efermi \n %f\n\n" %self.Efermi)
                 
-                if self.Estart != 0: 
+                if self.Estart != 0:
                     f.write("EStart \n %f\n\n" %self.Estart)
                 
             f.write("\nConvolution \n\nEnd")
@@ -357,6 +381,10 @@ class pyFDMNES(object):
                 f.close()
             
     def FDMNESfile (self):
+        """ Method to start the FDMNES calculation of the createt input file.
+            During the calculation it's no working possible. If the calculation 
+            is finished is printing "FDMNES simulation finished".
+        """
         
         assert hasattr(self, "path"), "Attribute `path` has not been defined. Try self.Filout() first"
         self.workdir = os.getcwd()
@@ -403,6 +431,8 @@ class pyFDMNES(object):
         os.chdir(self.workdir)
         
     def retrieve (self):
+        """ Method to check the excistent of the created bav file.
+        """
         if (not hasattr(self, "proc") or self.proc.poll() != None) and os.path.exists(self.bav):
             bav_open  = open(self.bav)
             line = bav_open.readlines()
@@ -412,6 +442,17 @@ class pyFDMNES(object):
             
             
     def Filein (self, fname):
+        """
+            Method to read-out of an exist input file. It is possible to get 
+            informations about the Radius, Range, Atom configuration and Crystal
+            structure and also different calculation parameters.
+            
+
+            Input:
+            ------
+                fname: string
+                    Name of the input file.
+        """
         fobject = open(fname, "r")
         content = fobject.read()
         fobject.close()
@@ -419,16 +460,17 @@ class pyFDMNES(object):
         content_red = map(string.strip,content.splitlines())
         content_red = filter(lambda x: x is not "", content_red)
         
-        keywords = ["Convolution", "SCF", "SCF_exc", "SCF_mag_free"]
+        keywords = ["Convolution", "SCF", "SCF_exc", "SCF_mag_free","Memory_save",
+                    "Density"]
         keywords_float = ["Radius", "Efermie", "Estart","Rpotmax",
-                          "N_self","P_self","R_self", "Delta_E_conv",]
-        keywords_int = ["Absorber"]
+                          "N_self","P_self","R_self", "Delta_E_conv","Hubbard"]
+        keywords_string = ["Absorber","Edge","Range"]
                 
         self.new_name = os.path.splitext(fname)[0].replace("_inp","_out")
         self.bav = self.new_name + "_bav.txt"
 
-        if "Range" in content_red:
-                self.Range = content_red[content_red.index("Range")+1]
+       # if "Range" in content_red:
+           #     self.Range = content_red[content_red.index("Range")+1]
                 
         for line in content_red:
             if line in flags + Multi_Exp_flags + keywords:
@@ -437,8 +479,8 @@ class pyFDMNES(object):
             if line in keywords_float:
                 setattr(self, line, float(content_red[content_red.index(line)+1]))
                 
-            if line in keywords_int:
-                setattr(self, line, int(content_red[content_red.index(line)+1]))
+            if line in keywords_string:
+                setattr(self, line, str(content_red[content_red.index(line)+1]))
                 
             if line == "Spgroup":
                 line = content_red[content_red.index(line)+1]
@@ -454,7 +496,7 @@ class pyFDMNES(object):
                 linenum = content_red.index(line)
                 atom_num_list = []
                 while True:
-                    try: 
+                    try:
                         linenum += 1
                         atomline = content_red[linenum]
                         atomline = atomline.split()
@@ -468,7 +510,7 @@ class pyFDMNES(object):
                     except ValueError:
                         break
                # while :
-                #    self.atm_conf = content_red[content_red.index(line)+1]
+                # self.atm_conf = content_red[content_red.index(line)+1]
                 
             if line in ["Crystal", "Molecule"]:
                 if line=="Crystal":
@@ -480,7 +522,7 @@ class pyFDMNES(object):
                 self.a, self.b, self.c, self.alpha, self.beta, self.gamma = cellline
                 positions = []
                 while True:
-                    try: 
+                    try:
                         linenum += 1
                         atomline = content_red[linenum]
                         atomline = atomline.split()
@@ -490,6 +532,8 @@ class pyFDMNES(object):
                         positions.append((num, position))
                     except ValueError:
                         break
+                self.pos = positions
+                print positions
         
         self.positions = {}
         self.atom_num = {}
@@ -506,8 +550,33 @@ class pyFDMNES(object):
                 symbols.append(symbol)
                 anzahl = symbols.count(symbol)
                 symbol += str(anzahl)
+       # return self.atom_num
             
-            self.positions[symbol] = position 
+            self.positions[symbol] = position
+        return self.atom_num
+        self.Atom = dict(Atom)
+             #   self.pos = positions
+             #   return self.pos
+    
+        positions = {}
+        self.atom_num = {}
+        for atom in positions:
+            num = atom[0]
+            position = atom[1:]
+            symbols = []
+            if "Atom" in content_red:
+                symbol = Atom[num-1][0]
+                self.atom_num[symbol] = elements.Z[symbol[:-1]]
+                print self.atom_num[symbol]
+            else:
+                symbol = elements.symbols[num]
+                self.atom_num[symbol] = elements.Z[symbol]
+                symbols.append(symbol)
+                anzahl = symbols.count(symbol)
+                symbol += str(anzahl)
+            
+            print self.atom_num
+            self.positions[symbol] = position
         self.Atom = dict(Atom)
                             
        #         self.Crysatal = line
@@ -519,10 +588,17 @@ class pyFDMNES(object):
 
     def get_XANES(self, conv = True):
         """
-            was macht get_XANES???
+            Method to read-out the calculated XANES datas of the output file 
+            created by FDMNES.
+            
+            Input:
+            -----
+                conv: bool
+                    If the calculation with or without convolution is wanted.
+            
         """
         if conv == True:
-            fname = self.new_name + "_conv.txt"
+            fname = self.new_name + "_conv.txt" 
             skiprows = 1
         else:
             fname = self.new_name + ".txt"
@@ -533,6 +609,23 @@ class pyFDMNES(object):
         
         
     def get_dafs (self, Reflex, pol_in, pol_out, azimuth, conv = True):
+        """
+            Method to read-out the calculated DAFS datas. It's possible to get 
+            the DAFS intensities for given paramters  with and without convolusion.
+            If the given parameters doesn't exist, it is possible to add these 
+            parameter to the input file.
+            
+            Input:
+            ------
+                Reflex: string
+                    reflection indexes
+                pol_in and pol_out: int
+                    orientation of the polarization
+                azimuth: int
+                    azimuthal angle
+                conv: bool
+                    convolution information
+        """
         
         self.Reflex = self.Reflex.round(0)
     
@@ -606,6 +699,15 @@ class pyFDMNES(object):
         return dafs
         
     def do_convolution(self, path):
+        """
+            Method to write a special convolution file. It is also possible to 
+            define the convolution parameters in the Filout method.
+            
+            Input:
+            ------
+                path: string
+                    Name of the convolution file.
+        """
         
         self.conv_path = os.path.abspath(path)
         EXE = os.path.dirname(EXEfile)
@@ -687,6 +789,10 @@ class pyFDMNES(object):
                 f.close()
         
     def checkvars(self):
+        """
+            Method to check the right attribut of the calculation parameters.
+        """
+        
         vars_float = ["N_self","P_self","R_self", "Delta_E_conv","Radius",
                       "Estart","Efermi",]
         vars_int = ["Run_Fil"]
@@ -694,23 +800,20 @@ class pyFDMNES(object):
                    "E1M1","M1M1","No_E1E1","No_E2E2","No_E1E2","No_E1E3","Green",
                    "Magnetism", "Density","Self-absorption","cartesian","nodipole",
                    "SCF_exc", "SCF_mag_free"]
-        vars_string = ["Range"]
+        vars_string = ["Range","Absorber"]
         
-        for varname in vars_float:
-            if varname in vars_float:
-                setattr(self, varname, float(getattr(self,varname)))
-        
-        for varname in vars_int:
-            if varname in vars_int:
-                setattr(self, varname, int(getattr(self,varname)))
+        for varname in vars_float + vars_int + vars_bool + vars_string:
+            if hasattr (self,varname):
+                if varname in vars_float:
+                    setattr(self, varname, float(getattr(self,varname)))
+
+                if varname in vars_int:
+                    setattr(self, varname, int(getattr(self,varname)))
+                    
+                if varname in vars_bool:
+                    setattr(self, varname, float(getattr(self,varname)))
                 
-        for varname in vars_bool:
-            if varname in vars_bool:
-                setattr(self, varname, float(getattr(self,varname)))
-                
-               
-        for varname in vars_string:
-            if varname in vars_string:
-                setattr(self, varname, float(getattr(self,varname)))
+             #   if varname in vars_string:
+                #    setattr(self, varname, float(getattr(self,varname)))
        
        
