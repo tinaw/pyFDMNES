@@ -314,7 +314,8 @@ class pyFDMNES(object):
                     f.write("%s" %atm_pos)
                 else:
                     if hasattr(self,"pos"):
-                        f.write("%s" %self.pos)
+                        for position in self.pos:
+                            f.write("%s \n" %position)
                     else:    
                         f.write(" %i " %self.atom_num[label])
                         atm_pos = array2str(self.positions[label])
@@ -529,11 +530,12 @@ class pyFDMNES(object):
                         atomline = map(float, atomline)
                         num = int(atomline[0])
                         position = atomline[1:4]
+                        position = array2str(position)
                         positions.append((num, position))
+                      #  self.pos = array2str(positions)
                     except ValueError:
                         break
                 self.pos = positions
-                print positions
         
         self.positions = {}
         self.atom_num = {}
@@ -550,34 +552,12 @@ class pyFDMNES(object):
                 symbols.append(symbol)
                 anzahl = symbols.count(symbol)
                 symbol += str(anzahl)
-       # return self.atom_num
-            
+
             self.positions[symbol] = position
         return self.atom_num
         self.Atom = dict(Atom)
              #   self.pos = positions
              #   return self.pos
-    
-        positions = {}
-        self.atom_num = {}
-        for atom in positions:
-            num = atom[0]
-            position = atom[1:]
-            symbols = []
-            if "Atom" in content_red:
-                symbol = Atom[num-1][0]
-                self.atom_num[symbol] = elements.Z[symbol[:-1]]
-                print self.atom_num[symbol]
-            else:
-                symbol = elements.symbols[num]
-                self.atom_num[symbol] = elements.Z[symbol]
-                symbols.append(symbol)
-                anzahl = symbols.count(symbol)
-                symbol += str(anzahl)
-            
-            print self.atom_num
-            self.positions[symbol] = position
-        self.Atom = dict(Atom)
                             
        #         self.Crysatal = line
         #        self.cell = content_red[content_red.index(line)+1]
