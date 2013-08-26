@@ -314,13 +314,20 @@ class pyFDMNES(object):
                     f.write("%s" %atm_pos)
                 else:
                     if hasattr(self,"pos"):
-                        for position in self.pos:
-                            f.write("%s \n" %position)
+                        for pos in self.pos:
+                            a = str(pos)
+                            b = a.split(",")
+                            self.num = filter(lambda x: x is not "(", b[0])
+                            self.x = filter(lambda x: x is not "[" , b[1])
+                            self.y = b[2]
+                            z_1 = filter(lambda x: x is not "]" , b[3])
+                            self.z = filter(lambda x: x is not ")" , z_1)
+                            f.write("%s %s%s%s\n" %(self.num, self.x, self.y, self.z))
                     else:    
                         f.write(" %i " %self.atom_num[label])
                         atm_pos = array2str(self.positions[label])
                         f.write("%s" %atm_pos)
-                 
+               
             for label in self.positions.iterkeys():
                 if label in self.resonant:
                     pass
@@ -331,12 +338,22 @@ class pyFDMNES(object):
                         atm_pos = array2str(self.positions[label])
                         f.write("%s" %atm_pos)
                     else:
-                        if hasattr(self,"pos"):
-                            f.write("%s" %self.pos)
-                        else:    
+                      if hasattr(self,"pos"):
+                           for pos in self.pos:
+                               a = str(pos)
+                               b = a.split(",")
+                               self.num = filter(lambda x: x is not "(", b[0])
+                               self.x = filter(lambda x: x is not "[" , b[1])
+                               self.y = b[2]
+                               z_1 = filter(lambda x: x is not "]" , b[3])
+                               self.z = filter(lambda x: x is not ")" , z_1)
+                               f.write("%s %s%s%s\n" %(self.num, self.x, self.y, self.z))
+                               #  f.write("%s \n" %position)
+                      else: 
                             f.write(" %i " %self.atom_num[label])
                             atm_pos = array2str(self.positions[label])
                             f.write("%s" %atm_pos)
+              
     
             if self.extract == True and os.path.exists(self.bav):
                 bav_file = os.path.abspath(self.bav)
@@ -461,7 +478,7 @@ class pyFDMNES(object):
         content_red = map(string.strip,content.splitlines())
         content_red = filter(lambda x: x is not "", content_red)
         
-        keywords = ["Convolution", "SCF", "SCF_exc", "SCF_mag_free","Memory_save",
+        keywords = ["SCF", "SCF_exc", "SCF_mag_free","Memory_save",
                     "Density"]
         keywords_float = ["Radius", "Efermie", "Estart","Rpotmax",
                           "N_self","P_self","R_self", "Delta_E_conv","Hubbard"]
@@ -530,11 +547,11 @@ class pyFDMNES(object):
                         atomline = map(float, atomline)
                         num = int(atomline[0])
                         position = atomline[1:4]
-                        position = array2str(position)
+                        #position = array2str(position)
                         positions.append((num, position))
-                      #  self.pos = array2str(positions)
                     except ValueError:
                         break
+                #self.pos = array2str(positions)
                 self.pos = positions
         
         self.positions = {}
