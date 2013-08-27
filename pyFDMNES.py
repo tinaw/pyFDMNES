@@ -22,7 +22,7 @@ string_flag = ["Hubbard","Edge"]
 conv_flags = ["Gamma_fix", "Fprime", "Fprime_atom", "Estart","Efermi",
               "check_conv","Gen_shift", "S0_2", "Selec_core", "Photoemission",
               "Forbidden","Gaussian", "Seah","Gamma_var", "Gamma_max", "Elarg",
-              "Ecent", "Gamma_hole","Dec"]
+              "Ecent", "Gamma_hole","Dec", "Gen_shift"]
 
 SCF_flags = ["N_self","P_self","R_self", "Delta_E_conv", "SCF_exc",
              "SCF_mag_free"]
@@ -85,6 +85,9 @@ class pyFDMNES(object):
         self.Efermi = 0
         self.Estart = 0 
         self.Cal_val = {}
+        self.Exp = {}
+        self.Scan = []
+        self.Scan_conv = []
         
         if str(structure).isdigit():
             int(structure)
@@ -124,25 +127,25 @@ class pyFDMNES(object):
         elif labeltest[:1] in elements.Z.keys():
             self.elements[label] = labeltest[:1]
         else:
-            raise ValueError("Atom label shall start with the symbol of the chemical element" + \
+            raise ValueError("Atom label shall start with the symbol of the chemical element" 
                              "Chemical element not found in %s"%label)                    
     
         self.atom_num[label] = elements.Z[self.elements[label]]
         self.positions[label] = position
         
     def load_cif(self, fname, resonant=""):
-        """ Method to loads a structure from a .cif file.
+        """ Method to loads a structure from a CIF file.
             Read-out parameters are spacegroup number, spacegroup name, 
             spacegroup origin, metric and atom positions.
          
             Input:
             ------
             fname: string
-                The name of the .cif file.
+                The name of the CIF file.
             resonant: string
                 Label of the resonant atom.
 
-            Informations about .cif file:
+            Informations about CIF file:
             -----------------------------
                 Hall SR, Allen FH, Brown ID (1991).
                 "The Crystallographic Information File (CIF): a new standard 
@@ -245,10 +248,10 @@ class pyFDMNES(object):
             
             if hasattr (self,"Range") and not self.extract:
                 if isinstance(self.Range, str):
-                    f.write("Range \n %s \n\n" % self.Range)
+                    f.write("Range \n %s \n" % self.Range)
                 else:
                     self.Range = array2str(self.Range)
-                    f.write("Range \n %s \n\n" % self.Range)
+                    f.write("Range \n %s \n" % self.Range)
         
         #if self.radius == isinstance (float):
             if isinstance(self.Radius, float) and not self.extract:
@@ -285,7 +288,7 @@ class pyFDMNES(object):
                 f.write("\nSpgroup \n %i" %self.sg_num)
             if hasattr(self,"cscode"):
                 f.write("%s\n\n" %self.cscode)
-            else:f.write("\n\n")
+            else:f.write("\n")
                 
             if hasattr(self,"Absorber") and len(self.Absorber)>0:
                 if  not isinstance(self.Absorber, str):
@@ -293,13 +296,13 @@ class pyFDMNES(object):
                 f.write("Absorber\n %s \n" %self.Absorber)
 
             if hasattr(self, "Atom") and len(self.Atom)>0:
-                f.write("Atom\n")
+                f.write("\nAtom\n")
                 #if isinstance(self.Atom, dict):
                 for label in self.Atom.keys():
                     f.write(" %i" %self.atom_num[label])
                     atm_conf = array2str(self.Atom[label])
                     f.write(" %s" %atm_conf)
-                
+          
             if self.Crystal == True: f.write("\nCrystal \n")
             else: f.write("Molecule \n")
             
@@ -314,15 +317,19 @@ class pyFDMNES(object):
                     f.write("%s" %atm_pos)
                 else:
                     if hasattr(self,"pos"):
-                        for pos in self.pos:
-                            a = str(pos)
-                            b = a.split(",")
-                            self.num = filter(lambda x: x is not "(", b[0])
-                            self.x = filter(lambda x: x is not "[" , b[1])
-                            self.y = b[2]
-                            z_1 = filter(lambda x: x is not "]" , b[3])
-                            self.z = filter(lambda x: x is not ")" , z_1)
-                            f.write("%s %s%s%s\n" %(self.num, self.x, self.y, self.z))
+                        if label[:2].isalpha(): 
+                            symbol = label[:2]
+                        else: symbol = label[:1]
+                        if self.atm_num == elements.Z[symbol] and len(self.Atom) == 0:
+                            for pos in self.pos:
+                                a = str(pos)
+                                b = a.split(",")
+                                self.num = filter(lambda x: x is not "(", b[0])
+                                self.x = filter(lambda x: x is not "[", b[1])
+                                self.y = b[2]
+                                z_1 = filter(lambda x: x is not "]", b[3])
+                                self.z = filter(lambda x: x is not ")", z_1)
+                                f.write("%s %s%s%s\n" %(self.num, self.x, self.y, self.z))
                     else:    
                         f.write(" %i " %self.atom_num[label])
                         atm_pos = array2str(self.positions[label])
@@ -339,16 +346,19 @@ class pyFDMNES(object):
                         f.write("%s" %atm_pos)
                     else:
                       if hasattr(self,"pos"):
-                           for pos in self.pos:
-                               a = str(pos)
-                               b = a.split(",")
-                               self.num = filter(lambda x: x is not "(", b[0])
-                               self.x = filter(lambda x: x is not "[" , b[1])
-                               self.y = b[2]
-                               z_1 = filter(lambda x: x is not "]" , b[3])
-                               self.z = filter(lambda x: x is not ")" , z_1)
-                               f.write("%s %s%s%s\n" %(self.num, self.x, self.y, self.z))
-                               #  f.write("%s \n" %position)
+                          if label[:2].isalpha(): 
+                               symbol = label[:2]
+                          else: symbol = label[:1]
+                          if self.atm_num == elements.Z[symbol] and len(self.Atom) == 0:
+                            for pos in self.pos:
+                                a = str(pos)
+                                b = a.split(",")
+                                self.num = filter(lambda x: x is not "(", b[0])
+                                self.x = filter(lambda x: x is not "[", b[1])
+                                self.y = b[2]
+                                z_1 = filter(lambda x: x is not "]", b[3])
+                                self.z = filter(lambda x: x is not ")", z_1)
+                                f.write("%s %s%s%s\n" %(self.num, self.x, self.y, self.z))
                       else: 
                             f.write(" %i " %self.atom_num[label])
                             atm_pos = array2str(self.positions[label])
@@ -388,7 +398,8 @@ class pyFDMNES(object):
                 if self.Estart != 0:
                     f.write("EStart \n %f\n\n" %self.Estart)
                 
-            f.write("\nConvolution \n\nEnd")
+                f.write("\nConvolution\n")
+            f.write("\nEnd")
     
        # if self.R_self != self.Radius: oder 3.5???
             # f.write("...")
@@ -527,6 +538,7 @@ class pyFDMNES(object):
                         Atom.append((symbol,atm_conf))
                     except ValueError:
                         break
+                self.Atom = dict(Atom)
                # while :
                 # self.atm_conf = content_red[content_red.index(line)+1]
                 
@@ -552,7 +564,11 @@ class pyFDMNES(object):
                     except ValueError:
                         break
                 #self.pos = array2str(positions)
-                self.pos = positions
+        if "Atom" in content_red :
+            pass
+        else:
+            self.pos = positions
+            self.atm_num = num
         
         self.positions = {}
         self.atom_num = {}
@@ -571,8 +587,8 @@ class pyFDMNES(object):
                 symbol += str(anzahl)
 
             self.positions[symbol] = position
-        return self.atom_num
-        self.Atom = dict(Atom)
+            self.atom_num
+      #  self.Atom = dict(Atom)
              #   self.pos = positions
              #   return self.pos
                             
@@ -742,27 +758,45 @@ class pyFDMNES(object):
                     Calculation = Conv[0] +".txt"
                     f.write(" %s\n" %Calculation)
             
-            if hasattr(self,"Reflex") and len(self.Reflex)>0 and len(self.Reflex[0,:])<6:
+            if hasattr(self,"Scan") and len(self.Reflex)>0 and len(self.Reflex[0,:])<6:
                 f.write("\nScan\n")
-                if hasattr(self, "Cal_val"):
-                    for element in key:
-                        Scan = os.path.splitext(Calculation)[0]
-                    scan =  Scan + "_scan.txt"
-                    f.write(" %s\n" %scan)
-                else:
-                    Scan = os.path.splitext(Calculation)[0]
-                    scan =  Scan + "_scan.txt"
-                    f.write(" %s\n" %scan)
+                for element in self.Scan:
+                    scan_path = os.path.abspath(element) 
+                    Scan = os.path.relpath(scan_path,EXE)
+            else:
+                scan = os.path.splitext(Calculation)[0]
+                Scan =  scan + "_scan.txt"
+            f.write(" %s\n" %Scan)
                         
-            if  hasattr(self,"\nScan_conv"):
-                scan_conv =  Scan + "_scan_conv.txt"
-                f.write("\nScan_conv\n %s\n" %scan_conv)
+            if hasattr(self,"Scan_conv"):
+                for element in self.Scan:
+                    scan_conv_path = os.path.abspath(element) 
+                    Scan_conv = os.path.relpath(scan_conv_path,EXE)
+            else:
+                Scan_conv = Scan + "_scan_conv.txt"
+                f.write("\nScan_conv\n %s\n" %Scan_conv)
             
             f.write("\nConv_out\n")
-            Conv_out = rel_conv_name.replace("inp","out")
+            if hasattr(self,"Conv_out"):
+                name = "\\" + self.Conv_out
+                Conv_out = os.path.dirname(rel_conv_name) + name
+            else:
+                Conv_out = rel_conv_name.replace("inp","out")
             f.write(" %s \n\n" %Conv_out)
+                
+            if hasattr(self, "Exp") and len(self.Exp)>0:
+                f.write("Experiment\n")
+                key = self.Exp.keys()
+                for element in self.Exp:
+                    exp_path = os.path.abspath(element) 
+                    Exp = os.path.relpath(exp_path,EXE)
+                    f.write(" %s\n" %Exp)
+                    value = self.Exp[element]
+                    val = array2str(value, precision=1)
+                   # value = self.Cal_val.values()   
+                    f.write(" %s" %val)
                     
-            f.write("\nConvolution \n\n")
+          #  f.write("\nConvolution \n\n")
 
             for key in conv_flags:
                 if hasattr(self,key):
@@ -770,7 +804,7 @@ class pyFDMNES(object):
                     if isinstance(value, bool):
                         f.write("%s\n\n" %key)
                     else:
-                        f.write("%s\n %f\n\n" %(key, getattr(self, key))) 
+                        f.write("%s\n %s\n\n" %(key, getattr(self, key))) 
                         
             if hasattr(self, "Thompson") and len(self.Thompson)>0:
                 self.Thompson = array2str(self.Thompson)
@@ -791,7 +825,7 @@ class pyFDMNES(object):
         """
         
         vars_float = ["N_self","P_self","R_self", "Delta_E_conv","Radius",
-                      "Estart","Efermi",]
+                      "Estart","Efermi"]
         vars_int = ["Run_Fil"]
         vars_bool = ["Quadrupole","Octupole","Dimag", "E1E2","E1E3","E2E2","E3E3",
                    "E1M1","M1M1","No_E1E1","No_E2E2","No_E1E2","No_E1E3","Green",
