@@ -22,7 +22,7 @@ string_flag = ["Hubbard","Edge"]
 conv_flags = ["Gamma_fix", "Fprime", "Fprime_atom", "Estart","Efermi",
               "check_conv","Gen_shift", "S0_2", "Selec_core", "Photoemission",
               "Forbidden","Gaussian", "Seah","Gamma_var", "Gamma_max", "Elarg",
-              "Ecent", "Gamma_hole","Dec"]
+              "Ecent", "Gamma_hole","Dec", "Memory_save"]
 
 SCF_flags = ["N_self","P_self","R_self", "Delta_E_conv", "SCF_exc",
              "SCF_mag_free"]
@@ -80,11 +80,10 @@ class pyFDMNES(object):
         self.Rpotmax = 0
         self.extract = False
         self.Absorber = ()
-        self.convolution = True
-        self.Cal = {}
+       # self.convolution = True
         self.Exp = {}
-        self.Scan = []
-        self.Scan_conv = []
+      #  self.Scan = []
+       # self.Scan_conv = []
         
         if str(structure).isdigit():
             int(structure)
@@ -289,7 +288,7 @@ class pyFDMNES(object):
             else:f.write("\n")
                 
             if hasattr(self,"Absorber") and len(self.Absorber)>0:
-                if  not isinstance(self.Absorber, str):
+                if not isinstance(self.Absorber, str):
                     self.Absorber = array2str(self.Absorber)
                 f.write("Absorber\n %s \n" %self.Absorber)
 
@@ -320,14 +319,9 @@ class pyFDMNES(object):
                         else: symbol = label[:1]
                         if self.atm_num == elements.Z[symbol] and len(self.Atom) == 0:
                             for pos in self.pos:
-                                a = str(pos)
-                                b = a.split(",")
-                                self.num = filter(lambda x: x is not "(", b[0])
-                                self.x = filter(lambda x: x is not "[", b[1])
-                                self.y = b[2]
-                                z_1 = filter(lambda x: x is not "]", b[3])
-                                self.z = filter(lambda x: x is not ")", z_1)
-                                f.write("%s %s%s%s\n" %(self.num, self.x, self.y, self.z))
+                                num, position = pos
+                                x, y, z = position
+                                f.write("%s %s %s %s\n" %(num, x, y, z))
                     else:    
                         f.write(" %i " %self.atom_num[label])
                         atm_pos = array2str(self.positions[label])
@@ -349,14 +343,9 @@ class pyFDMNES(object):
                           else: symbol = label[:1]
                           if self.atm_num == elements.Z[symbol] and len(self.Atom) == 0:
                             for pos in self.pos:
-                                a = str(pos)
-                                b = a.split(",")
-                                self.num = filter(lambda x: x is not "(", b[0])
-                                self.x = filter(lambda x: x is not "[", b[1])
-                                self.y = b[2]
-                                z_1 = filter(lambda x: x is not "]", b[3])
-                                self.z = filter(lambda x: x is not ")", z_1)
-                                f.write("%s %s%s%s\n" %(self.num, self.x, self.y, self.z))
+                                num, position = pos
+                                x,y,z = position
+                                f.write("%s %s %s %s\n" %(num, x, y, z))
                       else: 
                             f.write(" %i " %self.atom_num[label])
                             atm_pos = array2str(self.positions[label])
@@ -389,14 +378,14 @@ class pyFDMNES(object):
                     dafs_val = array2str(self.dafs)
                     f.write("\nAtom\n%s \n" %dafs_val)
                     
-            if self.convolution == True:
-                f.write("\nConvolution\n")
-                
-            if hasattr(self,"Efermi"):
-                f.write("Efermi \n %f\n\n" %self.Efermi)
-                
-            if hasattr(self,"Estart"):
-                f.write("Estart \n %f\n\n" %self.Estart)
+     #       if self.convolution == True:
+     #           f.write("\nConvolution\n")
+     #           
+     #       if hasattr(self,"Efermi"):
+     #           f.write("Efermi \n %f\n\n" %self.Efermi)
+     #           
+     #       if hasattr(self,"Estart"):
+     #           f.write("Estart \n %f\n\n" %self.Estart)
             
             f.write("\nEnd")
     
@@ -711,7 +700,7 @@ class pyFDMNES(object):
         dafs = np.loadtxt(fname, skiprows = skiprows)
         return dafs
         
-    def do_convolution(self, path):
+    def do_convolution(self, path = None):
         """
             Method to write a special convolution file. It is also possible to 
             define the convolution parameters in the Filout method.
@@ -721,11 +710,12 @@ class pyFDMNES(object):
                 path: string
                     Name of the convolution file.
         """
-        
-        self.conv_path = os.path.abspath(path)
+        if path == None:
+            path = "_conv.".join(self.path.split("."))
+            
+        self.path = os.path.abspath(path)
         EXE = os.path.dirname(EXEfile)
-        rel_conv_name = os.path.relpath(self.conv_path,EXE)
-        
+        rel_conv_name = os.path.relpath(self.path,EXE)
         
         try: f = open(path, "w")
         except IOError:
@@ -737,39 +727,50 @@ class pyFDMNES(object):
             
             if hasattr(self, "Cal") and isinstance(self.Cal, dict):
                 key = self.Cal.keys()
-                f.write("Calculation\n")
                 for element in self.Cal:
                     cal_path = os.path.abspath(element) 
                     Calculation = os.path.relpath(cal_path,EXE)
-                    f.write("%s\n" %Calculation)
+                    f.write("Calculation\n%s\n" %Calculation)
                     value = self.Cal[element]
                     val = array2str(value, precision=1)
                    # value = self.Cal_val.values()   
                     f.write("%s\n" %val)
-            else: 
+            elif hasattr(self, "Cal"): 
                 cal_path = os.path.abspath(self.Cal) 
                 Calculation = os.path.relpath(cal_path,EXE)
                 f.write("Calculation\n%s\n" %Calculation)
-             
+            else:
+                cal_path = os.path.relpath(self.new_name + ".txt", EXE)
+                f.write("Calculation\n%s\n" %cal_path)
+            #print("Using previous calculation in %s"%cal_path) 
+            
             if hasattr(self,"Scan") and len(self.Reflex)>0 and len(self.Reflex[0,:])<6:
                 for element in self.Scan:
                     scan_path = os.path.abspath(element) 
-                    Scan = os.path.relpath(scan_path,EXE)
+                    Scan = os.path.relpath(scan_path,EXE)  
                     f.write("\nScan\n%s\n" %Scan)
+            elif hasattr(self,"Scan"):
+                Scan = os.path.relpath(self.new_name + "_scan.txt", EXE)     
+                f.write("\nScan\n%s\n" %Scan)
               
-            if hasattr(self,"Scan_conv"):
+            if hasattr(self,"Scan_conv") and path!= None:
                 for element in self.Scan_conv:
                     scan_conv_path = os.path.abspath(element) 
                     Scan_conv = os.path.relpath(scan_conv_path,EXE)
                     f.write("\nScan_conv\n%s\n" %Scan_conv)
+            elif hasattr(self,"Scan_conv"):
+                Scan_conv = os.path.relpath(self.new_name + "_scan_conv.txt", EXE)
+                f.write("\nScan_conv\n%s\n" %Scan_conv)
         
             if hasattr(self,"Conv_out"):
                 name = "\\" + self.Conv_out
-                Conv_out = os.path.dirname(rel_conv_name) + name
-                f.write("\nConv_out\n%s\n" %Conv_out)
+            else:
+                name = self.new_name + "_conv.txt"
+            Conv_out = os.path.relpath(name, EXE)
+            f.write("\nConv_out\n%s\n" %Conv_out)
                 
             if hasattr(self, "Exp") and len(self.Exp)>0:
-                f.write("Experiment\n")
+                f.write("\nExperiment\n")
                 key = self.Exp.keys()
                 for element in self.Exp:
                     exp_path = os.path.abspath(element) 
@@ -826,7 +827,7 @@ class pyFDMNES(object):
                     setattr(self, varname, int(getattr(self,varname)))
                     
                 if varname in vars_bool:
-                    setattr(self, varname, float(getattr(self,varname)))
+                    setattr(self, varname, bool(getattr(self,varname)))
                 
              #   if varname in vars_string:
                 #    setattr(self, varname, float(getattr(self,varname)))
