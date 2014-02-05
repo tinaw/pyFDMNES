@@ -7,15 +7,19 @@ Created on Thu Jul 25 17:03:33 2013
 
 import numpy as np
 import StringIO
-import logging
 import os
 import elements
 import subprocess
 import string
 
 
-flags = ["Green","Magnetism", "Density","Self_absorption","cartesian",
-         "nodipole","Memory_save"] 
+flags = ["Green",
+         "Magnetism",
+         "Density",
+         "self_absorption",
+         "cartesian",
+         "nodipole",
+         "memory_save"] 
 
 string_flag = ["Hubbard","Edge"]         
          
@@ -196,8 +200,7 @@ class pyFDMNES(object):
                 py = float(atomline[col_y].partition("(")[0]) #)
                 pz = float(atomline[col_z].partition("(")[0]) #)
                 position = (px, py, pz)       
-                if logging.DEBUG: 
-                    self.add_atom(label, position)
+                self.add_atom(label, position)
 
 
     def Filout(self, path):
@@ -260,11 +263,11 @@ class pyFDMNES(object):
         
             for key in flags:
                 if hasattr(self,key) and getattr(self,key) ==True:
-                        f.write("\n%s \n" %key)
+                    f.write("\n%s \n" %key)
               
             for key in Multi_Exp_flags :
                  if hasattr(self,key) and getattr(self,key)==True:
-                     f.write("\n%s \n" %key)
+                    f.write("\n%s \n" %key)
             
             for key in string_flag:
                 if hasattr(self, key): 
