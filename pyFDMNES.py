@@ -262,7 +262,7 @@ class pyFDMNES(object):
             raise IOError("File %s already exists. "%path
                           "Use overwrite=True to replace it.")
         
-        self.path = path
+        self.path_in = path
         
         output = []
         
@@ -337,20 +337,15 @@ class pyFDMNES(object):
         ########################################################################
         
     def FDMNESfile(self):
-        """ Method to start the FDMNES calculation of the createt input file.
-            During the calculation it isn't possible to work. If the calculation 
-            finished, "FDMNES simulation finished" is printing.
+        """
+            Method to start the FDMNES calculation of the created input file.
         """
         
         assert hasattr(self, "path"), 
-            "Attribute `path` has not been defined. Try self.FileOut() first"
+            "Attribute `path` has not been defined. Try pyFDMNES.FileOut() first"
         
-        File = os.path.split(EXEfile)
-        fdmfile =os.path.join(File[0],"fdmfile.txt")
-        
-        
-        Input = os.path.relpath(self.path, os.path.dirname(EXEfile))
-        #Input = os.path.relpath(self.path, os.getcwd())
+        fdmfile = os.path.join(self.fdmnes_dir, "fdmfile.txt")
+        path_in = os.path.relpath(self.path_in, self.fdmnes_dir)
         
         try: f = open(fdmfile,"w")
         except IOError:
@@ -370,22 +365,26 @@ class pyFDMNES(object):
         finally: 
             f.close()
         
-        os.chdir(File[0])
-        logfile = open(os.path.join(self.workdir, "fdmnfile.txt"), "w")
+        os.chdir(self.fdmnes_dir)
+        logpath = os.path.join(self._WD, "fdmnes.log")
+        logfile = open(logpath, "w")
         #errfile = open(os.path.join(self.workdir, "fdmnes_error.txt", "w"))
         if self.verbose:
             stdout = None
         else:
             stdout = logfile
+            print("Output written to:%s%s"%(os.linesep, logpath))
         try:
             self.proc = subprocess.Popen(EXEfile, stdout=stdout) #stderr = errfile)
             self.proc.wait()
             print("FDMNES simulation finished")
-        except:
-            pass
+        except Exception as e:
+            print("An error occured when running FDMNES executable at")
+            print(self.fdmnes_exe)
+            print("Message: %s"%e)
         finally:
             logfile.close()
-        os.chdir(self.workdir)
+            os.chdir(self.workdir)
         
     def retrieve(self):
         """ Method to check the excisting of the created BAV file.
