@@ -6,4 +6,5 @@
 *.tgz
 trash/
 *.pyc
+*~
 examples/*.txt
