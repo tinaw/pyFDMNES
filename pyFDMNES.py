@@ -54,6 +54,16 @@ def mkfloat(string):
         string = string[:i]
     return float(string)
 
+
+class ConsistencyError(Exception):
+    def __init__(self, value="Inconsistent parameter values found.", 
+                       errmsg="", identifier=None):
+        self.value = value
+        self.errmsg = errmsg
+    def __str__(self):
+        return self.value + os.lsep + "Message: %s" %self.errmsg
+
+
 class Parameters(dict):
     def __init__(self, value=None):
         if value is None:
@@ -235,15 +245,31 @@ class pyFDMNES(object):
                 self.P.Z_absorber = elements.Z[symbol]
         
     
-    def check_parameters(self):
-        if self.P.has_key("Atom"):
+    def check_parameters(self, keyw):
+        if not self.P.has_key(keyw):
+            return True
+        if keyw=="Atom" and len(self.P.Atom):
             numspecies = len(np.unique(self.elements.values()))
             numconf = len(self.P.Atom)
-            assert numconf == numspecies,
-             "Number of given electron configurations (%i) does not "%numconf\
-             "match number of different species in structure (%i)"%numspecies
-            
-
+            if not numconf == numspecies:
+                raise ConsistencyError(errmsg="Number of given electron "
+                    "configurations (%i) does not match number of "%numconf\
+                    "different species in structure (%i)"%numspecies)
+            if self.P.has_key("Atom_conf") and len(self.P.Atom_conf):
+                raise ConsistencyError(errmsg="Electronic configuration"
+                    "given twice: Parameters Atom and Atom_conf")
+        return True
+                
+        
+    def skip_group(self, Group, TestGroup="all")
+        if TestGroup=="all":
+            TestGroup = ["SCF", "Convolution", "Extract", "Reflection"]
+        for Name in TestGroup:
+            if Group.has_key(Name):
+                if not hasattr(self.P, Name) or not self.P[Name]:
+                    return True
+        return False
+    
     def FileOut(self, path, overwrite=False):
         """ Method writes an input file for the FDMNES calculation.
             Further calculation parameters, for example Range and Radius
@@ -298,8 +324,9 @@ class pyFDMNES(object):
         cell = (self.a, self.b, self.c, self.alpha, self.beta, self.gamma)
         output.append("  %g %g %g %g %g %g" %cell)
         
+        self.check_parameters("Atom")
         for label in self.positions.iterkeys():
-            if len(self.P.Atom) and not len(self.P.Atom_conf):
+            if len(self.P.Atom) and len(self.P.Atom):
                 atomnum = self.P.Atom.index(self.Z[label]) + 1
             else:
                 atomnum = self.Z[label]
@@ -314,13 +341,7 @@ class pyFDMNES(object):
                 output.append("%i %.10g %.10g %.10g !%s"%line)
         
         for Group in Defaults:
-            if Group.has_key("SCF") and not Group["SCF"]:
-                continue
-            if Group.has_key("Convolution") and not Group["Convolution"]:
-                continue
-            if Group.has_key("Extract") and not Group["Extract"]:
-                continue
-            if Group.has_key("Reflection") and not len(Group["Reflection"])>0:
+            if self.skip_group(Group):
                 continue
             for keyw in Group.iterkeys():
                 if self.P.has_key(keyw) and self.P[keyw]!=Group[keyw]:
@@ -328,13 +349,13 @@ class pyFDMNES(object):
                     assert isinstance(self.P[keyw], deftype),
                         "Wrong type: Parameter %s has to be of type %s"\
                             %(keyw, deftype)
-                    check_parameters(keyw, self.P[keyw]) # t.b.w.
+                    self.check_parameters(keyw) # t.b.w.
                     output.append(keyw)
                     output.append(param2str(self.P[keyw]))
 
         with open(path, "w") as f:
             f.writelines(output)
-        ########################################################################
+        #####################################################################
         
     def FDMNESfile(self):
         """
@@ -741,32 +762,3 @@ class pyFDMNES(object):
         finally: 
                 f.close()
         
-    def checkvars(self):
-        """
-            Method to check the right attribut of the calculation parameters.
-        """
-        
-        vars_float = ["N_self","P_self","R_self", "Delta_E_conv","Radius",
-                      "Estart","Efermi"]
-        vars_int = ["Run_Fil"]
-        vars_bool = ["Quadrupole","Octupole","Dimag", "E1E2","E1E3","E2E2","E3E3",
-                   "E1M1","M1M1","No_E1E1","No_E2E2","No_E1E2","No_E1E3","Green",
-                   "Magnetism", "Density","Self-absorption","cartesian","nodipole",
-                   "SCF_exc", "SCF_mag_free"]
-        vars_string = ["Range","Absorber"]
-        
-        for varname in vars_float + vars_int + vars_bool + vars_string:
-            if hasattr (self,varname):
-                if varname in vars_float:
-                    setattr(self, varname, float(getattr(self,varname)))
-
-                if varname in vars_int:
-                    setattr(self, varname, int(getattr(self,varname)))
-                    
-                if varname in vars_bool:
-                    setattr(self, varname, bool(getattr(self,varname)))
-                
-             #   if varname in vars_string:
-                #    setattr(self, varname, float(getattr(self,varname)))
-       
-       

@@ -8,6 +8,7 @@ ParamTypes = namedtuple("ParamTypes", ("Basic",
                                        "RXS",
                                        "Spin",
                                        "Convolution", 
+                                       "Extract", 
                                        "Experiment"))
 
 Defaults = ParamTypes({}, {}, {}, {}, {})
@@ -33,7 +34,7 @@ Defaults.Basic["Magnetism"] = False
 Defaults.Basic["Memory_save"] = False
 Defaults.Basic["Polarize"] = []
 Defaults.Basic["Radius"] = 5.67
-Defaults.Basic["Range"] = [-5., 0.5, 60.] # eV with respect to edge
+Defaults.Basic["Range"] = (-5., 0.5, 60.) # eV with respect to edge
 Defaults.Basic["Relativism"] = False
 Defaults.Basic["Rpotmax"] = 0.
 Defaults.Basic["TDDFT"] = False
