@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-F
 """
 Created on Thu Jul 25 17:03:33 2013
 
@@ -11,30 +11,14 @@ import os
 import elements
 import subprocess
 import string
+import collections
+from settings import Defaults, ParamTypes
 
 
-flags = ["Green",
-         "Magnetism",
-         "Density",
-         "self_absorption",
-         "cartesian",
-         "nodipole",
-         "memory_save"] 
 
-string_flag = ["Hubbard","Edge"]         
-         
-conv_flags = ["Gamma_fix", "Fprime", "Fprime_atom", "Estart","Efermi",
-              "check_conv","Gen_shift", "S0_2", "Selec_core", "Photoemission",
-              "Forbidden","Gaussian", "Seah","Gamma_var", "Gamma_max", "Elarg",
-              "Ecent", "Gamma_hole","Dec"]
 
-SCF_flags = ["N_self","P_self","R_self", "Delta_E_conv", "SCF_exc",
-             "SCF_mag_free"]
-        
-Multi_Exp_flags = ["Quadrupole","Octupole","Dimag", "E1E2","E1E3","E2E2","E3E3",
-                   "E1M1","M1M1","No_E1E1","No_E2E2","No_E1E2","No_E1E3"]
+EXEfile = os.path.abspath('/space/crichter/backup/Programme/FDMNES/fdmnes_2013_12_12/fdmnes_linux64')
 
-EXEfile = os.path.abspath('\\\\win.desy.de\\home\\weiget\\My Documents\\fdmnes_2013_05_27\\fdmnes\\fdmnes.exe')
 
 def array2str(array, precision=4):
     array = np.array(array)
@@ -50,14 +34,58 @@ def array2str(array, precision=4):
     return values
 
 
+def param2str(param):
+    if isinstance(param, bool):
+        return ""
+    if isinstance(param, str):
+        return param
+    if isinstance(param, int):
+        return "%i"%param
+    if isinstance(param, float):
+        return "%g"%param
+    if isinstance(param, list):
+        return os.linesep.join(map(param2str, param))
+    if isinstance(param, tuple):
+        assert all(map(lambda x: isinstance(x, (bool,str,int,float,tuple)),
+                       param))
+        return " ".join(map(param2str, param))
+
+def mkfloat(string):
+    i = string.find("(")
+    if i>=0:
+        string = string[:i]
+    return float(string)
+
+class Parameters(dict):
+    def __init__(self, value=None):
+        if value is None:
+            pass
+        elif isinstance(value, dict):
+            for key in value:
+                self.__setitem__(key, value[key])
+        else:
+            raise TypeError, 'expected dict'
+
+    def __setitem__(self, key, value):
+        dict.__setitem__(self, key, value)
+
+    def __getitem__(self, key):
+        return dict.__getitem__(self, key)
+    __setattr__ = __setitem__
+    __getattr__ = __getitem__
+
+
+
 class pyFDMNES(object):
-    """ Python programm  for FDMNES application.
+    """ 
+        Python programm  for FDMNES application.
     """
     
-    def __init__(self, structure, resonant="", verbose=False):
+    def __init__(self, structure, resonant="", verbose=False, 
+                       fdmnes_exe=EXEfile):
         """
-            Calculation of spectra for x-ray absorption spectroscopy with FDMNES for
-            given parameters and structures in the following steps:
+            Calculation of spectra for x-ray absorption spectroscopy with
+            FDMNES for given parameters and structures in the following steps:
                 - compile input file for FDMNES 
                 - process and controll the FDMNES calculation
                 - fit and plot the calculate datas
@@ -68,20 +96,15 @@ class pyFDMNES(object):
                             or
                                 - path to .cif-file
         """
-        self.positions = {} # symmetric unit
+        self.positions = collections.OrderedDict() # symmetric unit
         self.elements = {}
         self.verbose = verbose
         self.resonant = []
-        self.atom_num = {}
+        self.Z = {}
         self.occupancy = {}
         self.Crystal = True
-        self.Radius = 2.5
-        self.Range = np.array([-10., 0.1, -2, 0.2, 0., 0.5, 20., 1., 40.])
         self.Polarise = []
-        self.Reflex = []
         self.Atom = {}
-        self.dafs = []
-        self.Rpotmax = 0
         self.extract = False
         self.Absorber = ()
         self.convolution = True
@@ -89,10 +112,13 @@ class pyFDMNES(object):
         self.Exp = {}
         self.Scan = []
         self.Scan_conv = []
+        self.P = Parameters()
+        self._WD = os.getcwd()
         
         if str(structure).isdigit():
             int(structure)
-            self.a, self.b, self.c, self.alpha, self.beta, self.gamma = structure
+            self.a, self.b, self.c, \
+            self.alpha, self.beta, self.gamma = structure
             self.cif = False
         elif os.path.isfile(structure):
              end = os.path.splitext(structure)[1].lower()
@@ -101,8 +127,10 @@ class pyFDMNES(object):
              elif end == ".txt":
                  self.Filein(structure)
         
+        self.fdmnes_dir = os.path.dirname(fdmnes_exe)
+        self.fdmnes_exe = fdmnes_exe
     
-    def add_atom(self, label, position):
+    def add_atom(self, label, position, resonant=False):
         """
             Method to give parameters for the FDMNES calculation.
             
@@ -112,13 +140,15 @@ class pyFDMNES(object):
                     The label of the atom.
                     It has to be unique and to start with the symbold of the
                     chemical element.
-                position : iterable of length 3, string
+                position : iterable of length 3
                     Postion of the atoms in the structure
         """
-        if type(label) is not str: raise TypeError("Invalid label. Need string.")
-        if len(position) is not 3: raise TypeError("Enter 3D position object!")
+        if type(label) is not str:
+            raise TypeError("Invalid label. Need string.")
+        if len(position) is not 3:
+            raise TypeError("Enter 3D position object!")
         
-        position = np.array(position)
+        position = tuple(position)
         #label = label.replace("_", "")
         labeltest = label[0].upper()
         if len(label) > 1:
@@ -128,21 +158,27 @@ class pyFDMNES(object):
         elif labeltest[:1] in elements.Z.keys():
             self.elements[label] = labeltest[:1]
         else:
-            raise ValueError("Atom label shall start with the symbol of the chemical element" 
-                             "Chemical element not found in %s"%label)                    
-    
-        self.atom_num[label] = elements.Z[self.elements[label]]
+            raise ValueError("Atom label shall start with the symbol of the"
+                             " chemical element. "
+                             "Chemical element not found in %s"%label)
+        self.Z[label] = elements.Z[self.elements[label]]
         self.positions[label] = position
+        if resonant:
+            if self.P.has_key("Absorber"):
+                self.P.Absorber += (len(self.positions),)
+            else:
+                self.P.Absorber = (len(self.positions),)
         
-    def load_cif(self, fname, resonant=""):
+        
+    def load_cif(self, path, resonant=""):
         """ Method to loads a structure from a CIF file.
             Read-out parameters are space group number, spac egroup name, 
             space group origin, metric and atom positions.
          
             Input:
             ------
-            fname: string
-                The name of the CIF file.
+            path : string
+                The path to the CIF file.
             resonant: string
                 Symbol of the resonant atom.
 
@@ -153,272 +189,166 @@ class pyFDMNES(object):
                 archive file for crystallography".
                 Acta Crystallographica A47 (6): 655-685
         """
-        fobject = open(fname,"r")
-        lines = fobject.readlines()
-        fobject.close()
-        lines.reverse()
-        num_atom = 0
-        while lines:
-            Line = lines.pop()
-            Line = Line.replace("\t", " ")
-            line = Line.lower()
-            if line.startswith("_symmetry_int_tables_number"):
-                self.sg_num = int(Line.split()[1])
-            elif line.startswith("_symmetry_space_group_name_h-m"):
-                self.sg_name = Line.split("'")[1].replace(" ","")
-                if ":" in self.sg_name:
-                    self.cscode = ":" + self.sg_name.split(':')[1]
-            elif line.startswith("_cell_length_a"):
-                self.a = float(Line.split()[1].partition("(")[0]) #)
-            elif line.startswith("_cell_length_b"):
-                self.b = float(Line.split()[1].partition("(")[0]) #)
-            elif line.startswith("_cell_length_c"):
-                self.c = float(Line.split()[1].partition("(")[0]) #)
-            elif line.startswith("_cell_angle_alpha"):
-                self.alpha = float(Line.split()[1].partition("(")[0]) #)
-            elif line.startswith("_cell_angle_beta"):
-                self.beta = float(Line.split()[1].partition("(")[0]) #)
-            elif line.startswith("_cell_angle_gamma"):
-                self.gamma = float(Line.split()[1].partition("(")[0]) #)
-            elif line.startswith("_atom_site"):
-                if line.startswith("_atom_site_label"): col_label = num_atom
-                elif line.startswith("_atom_site_type_symbol"): col_symbol = num_atom
-                elif line.startswith("_atom_site_fract_x"): col_x = num_atom
-                elif line.startswith("_atom_site_fract_y"): col_y = num_atom
-                elif line.startswith("_atom_site_fract_z"): col_z = num_atom
-                num_atom+=1
-            elif num_atom>0 and len(Line.split())==num_atom:
-                atomline = Line.split()
-                label = atomline[col_label]
-                symbol = atomline[col_symbol]
-                if symbol[:2].isalpha(): 
-                   symbol = symbol[:2]
-                else: symbol = symbol[:1]
-                if symbol==resonant:
-                    self.resonant.append(label)
-                px = float(atomline[col_x].partition("(")[0]) #)
-                py = float(atomline[col_y].partition("(")[0]) #)
-                pz = float(atomline[col_z].partition("(")[0]) #)
-                position = (px, py, pz)       
-                self.add_atom(label, position)
+        if not os.path.isfile(path):
+            raise IOError("File not found!")
+        try:
+            cf = CifFile.ReadCif(path)
+            cb = cf.first_block()
+        except Exception as e:
+            print("File doesn't seem to be a valid .cif file: %s"%path)
+            print e
+        
+        import CifFile
+        self.Crystal = True
+        # Reset Structure:
+        self.positions.clear()
+        self.P.Atom = []
+        self.P.Absorber = ()
+        self.P.Z_absorber = 0
+        
+        if cb.has_key("_symmetry_int_tables_number")
+            self.sg_num = mkfloat(cb["_symmetry_int_tables_number"])
+        
+        if cb.has_key("_symmetry_space_group_name_h-m")
+            self.sg_name = mkfloat(cb["_symmetry_space_group_name_h-m"])
+            self.sg_name = self.sg_name.replace(" ", "")
+            i = self.sg_name.find(":")
+            if i>=0:
+                self.cscode = self.sg_name[i:]
+        
+        self.a = mkfloat(cb["_cell_length_a"])
+        self.b = mkfloat(cb["_cell_length_b"])
+        self.c = mkfloat(cb["_cell_length_c"])
+        self.alpha = mkfloat(cb["_cell_angle_alpha"])
+        self.beta  = mkfloat(cb["_cell_angle_beta"])
+        self.gamma = mkfloat(cb["_cell_angle_gamma"])
+        
+        if isinstance(resonant, str):
+            self.resonant = [resonant]
+        elif hasattr(resonant, "__iter__"):
+            self.resonant.extend(resonant)
+        
+        for line in cb.GetLoop("_atom_site_label"):
+            symbol = line._atom_site_type_symbol
+            label = line._atom_site_label
+            px = mkfloat(line._atom_site_fract_x)
+            py = mkfloat(line._atom_site_fract_y)
+            pz = mkfloat(line._atom_site_fract_z)
+            position = (px, py, pz)
+            self.add_atom(label, position, (label in self.resonant))
+            if symbol == resonant:
+                self.P.Z_absorber = elements.Z[symbol]
+        
+    
+    def check_parameters(self):
+        if self.P.has_key("Atom"):
+            numspecies = len(np.unique(self.elements.values()))
+            numconf = len(self.P.Atom)
+            assert numconf == numspecies,
+             "Number of given electron configurations (%i) does not "%numconf\
+             "match number of different species in structure (%i)"%numspecies
+            
 
-
-    def Filout(self, path):
-        """ Method write a input file for the FDMNES calculation.
-            Edit the given structure parameter or parameter of the .cif file 
-            to the new inpout file.
-            More useful calculation parameters, for example Range and Radius
-            have to given of the user. It is also possible to get parameter from 
-            an exist input file and add to new parameters. For this use the 
-            keyword "extract". 
+    def FileOut(self, path, overwrite=False):
+        """ Method writes an input file for the FDMNES calculation.
+            Further calculation parameters, for example Range and Radius
+            have to given of the user. It is also possible to get parameter
+            from an exist input file and add to new parameters. 
+            For this use the keyword "extract". 
          
             Input:
             ------
-            path: string
-                Name of the input file.
+            path : string
+                Path to of the input file.
+            overwrite : bool
+                Has to be True to overwrite existing input file.
         """
+        if os.path.isfile(path) and not overwrite:
+            raise IOError("File %s already exists. "%path
+                          "Use overwrite=True to replace it.")
         
         self.path = path
         
-       # if os.path.exists(path):
-            # print ("path exist!")
-            # return
+        output = []
         
-        try: f = open(path, "w")
-        except IOError:
-            print "Error: No new file open"
+        basepath = os.path.splitext(path)[0]
+        if "_inp" in path:
+            self.path_out = basepath.replace("_inp","_out")
+        else:
+            self.path_out = basepath + "_out"
+            self.path_out = os.path.relpath(path_out, self.fdmnes_dir)
+        output.append("Filout")
+        output.append(self.path_out)
         
-        else: 
-            print "Written content in the file successfully"
-            
-            if "_inp" in path:
-                path_part = os.path.splitext(path)[0]
-                self.new_name = path_part.replace("_inp","_out")
-                self.new_path = os.path.relpath(self.new_name, os.path.dirname(EXEfile))
-                f.write("Filout \n %s \n\n" %self.new_path)
+        self.bavfile = self.path_out + "_bav.txt"
+        
+        
+        if hasattr(self,"sg_num"):    
+            sg = "Spgroup%s%i"%(os.linesep, self.sg_num)
+        if hasattr(self,"cscode"):
+            sg += os.linesep + self.cscode
+        else:
+            output.append(sg)
+        
+        
+        if any(map(lambda x: x<1, self.occupancy.values())):
+            suffix = "_t"
+        else:
+            suffix = ""
+        if self.Crystal == True:
+            output.append("Crystal"+suffix)
+        else:
+            output.append("Molecule"+suffix)
+        
+        cell = (self.a, self.b, self.c, self.alpha, self.beta, self.gamma)
+        output.append("  %g %g %g %g %g %g" %cell)
+        
+        for label in self.positions.iterkeys():
+            if len(self.P.Atom) and not len(self.P.Atom_conf):
+                atomnum = self.P.Atom.index(self.Z[label]) + 1
             else:
-                path_basename = os.path.splitext(path)[0]
-                self.new_name = path_basename + "_out"
-                self.new_path = os.path.relpath(self.new_name, os.path.dirname(EXEfile))
-                f.write("Filout \n %s \n\n" %self.new_path)
-            
-            if self.extract == False:
-                self.bav = self.new_name + "_bav.txt"
+                atomnum = self.Z[label]
+            pos = self.positions[label]
+            line = (atomnum,) + pos
+            if suffix != "":
+                occ = self.occupancy[label]
+                line += (occ,label)
+                output.append("%i %.10g %.10g %.10g %.g !%s"%line)
+            else:
+                line += (label,)
+                output.append("%i %.10g %.10g %.10g !%s"%line)
 
-        #if hasattr(self, "Range"):
-            
-            if hasattr (self,"Range") and not self.extract:
-                if isinstance(self.Range, str):
-                    f.write("Range \n %s \n" % self.Range)
-                else:
-                    self.Range = array2str(self.Range)
-                    f.write("Range \n %s \n" % self.Range)
+        for Group in Defaults:
+            if Group.has_key("SCF") and not Group["SCF"]:
+                continue
+            if Group.has_key("Convolution") and not Group["Convolution"]:
+                continue
+            if Group.has_key("Extract") and not Group["Extract"]:
+                continue
+            if Group.has_key("Reflection") and not len(Group["Reflection"])>0:
+                continue
+            for keyw in Group.iterkeys():
+                if self.P.has_key(keyw) and self.P[keyw]!=Group[keyw]:
+                    deftype = type(Group[keyw])
+                    assert isinstance(self.P[keyw], deftype),
+                        "Wrong type: Parameter %s has to be of type %s"\
+                            %(keyw, deftype)
+                    check_parameters(keyw, self.P[keyw]) # t.b.w.
+                    output.append(keyw)
+                    output.append(param2str(self.P[keyw]))
+
+        with open(path, "w") as f:
+            f.writelines(output)
+        ########################################################################
         
-        #if self.radius == isinstance (float):
-            if isinstance(self.Radius, float) and not self.extract:
-                f.write("Radius \n %f \n" % self.Radius)
-            
-            if self.Rpotmax != 0 and not self.extract:
-                f.write("\nRpotmax \n %s\n" %self.Rpotmax)
-        
-            for key in flags:
-                if hasattr(self,key) and getattr(self,key) ==True:
-                    f.write("\n%s \n" %key)
-              
-            for key in Multi_Exp_flags :
-                 if hasattr(self,key) and getattr(self,key)==True:
-                    f.write("\n%s \n" %key)
-            
-            for key in string_flag:
-                if hasattr(self, key): 
-                    value = getattr(self, key)
-                    f.write("\n%s \n %s \n" %(key, value)) 
-                    
-                #if getattr(self,key) == True:
-            if hasattr(self, "SCF") and self.SCF and not self.extract:
-                f.write("\nSCF \n")
-                for key in SCF_flags:
-                    if hasattr(self, key):
-                        value = getattr(self, key)
-                        if isinstance(value, bool):
-                            f.write("%s \n" %key)
-                        else:
-                            f.write("%s \n %f \n" %(key, getattr(self, key))) 
-                
-            if hasattr(self,"sg_num"):    
-                f.write("\nSpgroup \n %i" %self.sg_num)
-            if hasattr(self,"cscode"):
-                f.write("%s\n\n" %self.cscode)
-            else:f.write("\n")
-                
-            if hasattr(self,"Absorber") and len(self.Absorber)>0:
-                if  not isinstance(self.Absorber, str):
-                    self.Absorber = array2str(self.Absorber)
-                f.write("Absorber\n %s \n" %self.Absorber)
-
-            if hasattr(self, "Atom") and len(self.Atom)>0:
-                f.write("\nAtom\n")
-                #if isinstance(self.Atom, dict):
-                for label in self.Atom.keys():
-                    f.write(" %i" %self.atom_num[label])
-                    atm_conf = array2str(self.Atom[label])
-                    f.write(" %s" %atm_conf)
-          
-            if self.Crystal == True: f.write("\nCrystal \n")
-            else: f.write("Molecule \n")
-            
-            cell = (self.a, self.b, self.c, self.alpha, self.beta, self.gamma)
-            f.write(" %f %f %f %f %f %f\n" %cell)
-                                                               
-            for label in self.resonant:
-                if len(self.Atom)>0:
-                    num = self.Atom.keys().index(label) + 1
-                    f.write(" %i " %num)
-                    atm_pos = array2str(self.positions[label])
-                    f.write("%s" %atm_pos)
-                else:
-                    if hasattr(self,"pos"):
-                        if label[:2].isalpha(): 
-                            symbol = label[:2]
-                        else: symbol = label[:1]
-                        if self.atm_num == elements.Z[symbol] and len(self.Atom) == 0:
-                            for pos in self.pos:
-                                a = str(pos)
-                                b = a.split(",")
-                                self.num = filter(lambda x: x is not "(", b[0])
-                                self.x = filter(lambda x: x is not "[", b[1])
-                                self.y = b[2]
-                                z_1 = filter(lambda x: x is not "]", b[3])
-                                self.z = filter(lambda x: x is not ")", z_1)
-                                f.write("%s %s%s%s\n" %(self.num, self.x, self.y, self.z))
-                    else:    
-                        f.write(" %i " %self.atom_num[label])
-                        atm_pos = array2str(self.positions[label])
-                        f.write("%s" %atm_pos)
-               
-            for label in self.positions.iterkeys():
-                if label in self.resonant:
-                    pass
-                else:
-                    if len(self.Atom)>0:
-                        num = self.Atom.keys().index(label) + 1
-                        f.write(" %i " %num)
-                        atm_pos = array2str(self.positions[label])
-                        f.write("%s" %atm_pos)
-                    else:
-                      if hasattr(self,"pos"):
-                          if label[:2].isalpha(): 
-                               symbol = label[:2]
-                          else: symbol = label[:1]
-                          if self.atm_num == elements.Z[symbol] and len(self.Atom) == 0:
-                            for pos in self.pos:
-                                a = str(pos)
-                                b = a.split(",")
-                                self.num = filter(lambda x: x is not "(", b[0])
-                                self.x = filter(lambda x: x is not "[", b[1])
-                                self.y = b[2]
-                                z_1 = filter(lambda x: x is not "]", b[3])
-                                self.z = filter(lambda x: x is not ")", z_1)
-                                f.write("%s %s%s%s\n" %(self.num, self.x, self.y, self.z))
-                      else: 
-                            f.write(" %i " %self.atom_num[label])
-                            atm_pos = array2str(self.positions[label])
-                            f.write("%s" %atm_pos)
-              
-    
-            if self.extract == True and os.path.exists(self.bav):
-                bav_file = os.path.abspath(self.bav)
-                f.write("\nextract\n %s\n" %bav_file)
-                
-                if hasattr(self,"ext_Absorber") and len(self.ext_Absorber)>0:
-                    f.write("Absorber\n%s \n\n" %self.ext_Absorber)
-                    f.write("Extractpos\n%s \n\n"%self.Absorber)
-                    
-                if hasattr(self,"Rotsup") and len(self.Rotsup)>0:
-                   f.write("Rotsup\n%s \n\n" %self.Rotsup)
-                
-                if hasattr(self,"Extractsym") and len(self.Extractsym)>0:
-                   f.write("Extractsym\n%s \n\n" %self.Extractsym)
-                 
-                if hasattr(self,"Reflex") and len(self.Reflex)>0:
-                    Reflex_val = array2str(self.Reflex, precision=0)
-                    f.write("\nRXS\n%s\n" %Reflex_val)
-                
-                if hasattr(self,"Polarise") and len(self.Polarise)>0:
-                    Polarise_val = array2str(self.Polarise)
-                    f.write("\nPolarise\n%s\n" %Polarise_val)
-                    
-                if hasattr(self,"dafs") and len(self.dafs)>0:
-                    dafs_val = array2str(self.dafs)
-                    f.write("\nAtom\n%s \n" %dafs_val)
-                    
-            if self.convolution == True:
-                f.write("\nConvolution\n")
-                
-            if hasattr(self,"Efermi"):
-                f.write("Efermi \n %f\n\n" %self.Efermi)
-                
-            if hasattr(self,"Estart"):
-                f.write("Estart \n %f\n\n" %self.Estart)
-            
-            f.write("\nEnd")
-    
-       # if self.R_self != self.Radius: oder 3.5???
-            # f.write("...")
-       #if self.N_self != 30:
-            #f.write("...")
-
-        finally:
-                f.close()
-            
-    def FDMNESfile (self):
+    def FDMNESfile(self):
         """ Method to start the FDMNES calculation of the createt input file.
             During the calculation it isn't possible to work. If the calculation 
             finished, "FDMNES simulation finished" is printing.
         """
         
-        assert hasattr(self, "path"), "Attribute `path` has not been defined. Try self.Filout() first"
-        self.workdir = os.getcwd()
+        assert hasattr(self, "path"), 
+            "Attribute `path` has not been defined. Try self.FileOut() first"
         
         File = os.path.split(EXEfile)
         fdmfile =os.path.join(File[0],"fdmfile.txt")
@@ -462,14 +392,14 @@ class pyFDMNES(object):
             logfile.close()
         os.chdir(self.workdir)
         
-    def retrieve (self):
+    def retrieve(self):
         """ Method to check the excisting of the created BAV file.
         """
         if (not hasattr(self, "proc") or self.proc.poll() != None) and os.path.exists(self.bav):
             bav_open  = open(self.bav)
             line = bav_open.readlines()
             if ("Have a beautiful day !") in line[-1]:
-                print("Process was sucessfully")
+                print("Process finished successfully")
         else: print("Process wasn't sucessfully")
             
             
@@ -574,23 +504,22 @@ class pyFDMNES(object):
             self.atm_num = num
         
         self.positions = {}
-        self.atom_num = {}
+        self.Z = {}
         for atom in positions:
             num = atom[0]
             position = atom[1:]
             symbols = []
             if "Atom" in content_red:
                 symbol = Atom[num-1][0]
-                self.atom_num[symbol] = elements.Z[symbol[:-1]]
+                self.Z[symbol] = elements.Z[symbol[:-1]]
             else:
                 symbol = elements.symbols[num]
-                self.atom_num[symbol] = elements.Z[symbol]
+                self.Z[symbol] = elements.Z[symbol]
                 symbols.append(symbol)
                 anzahl = symbols.count(symbol)
                 symbol += str(anzahl)
 
             self.positions[symbol] = position
-            self.atom_num
       #  self.Atom = dict(Atom)
              #   self.pos = positions
              #   return self.pos
@@ -717,7 +646,7 @@ class pyFDMNES(object):
     def do_convolution(self, path):
         """
             Method to write a special convolution file. It is also possible to 
-            define the convolution parameters in the Filout method.
+            define the convolution parameters in the FileOut method.
             
             Input:
             ------
