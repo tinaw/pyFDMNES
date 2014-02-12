@@ -15,8 +15,6 @@ import collections
 from settings import Defaults, ParamTypes
 
 
-
-
 EXEfile = os.path.abspath('/space/crichter/backup/Programme/FDMNES/fdmnes_2013_12_12/fdmnes_linux64')
 
 
@@ -107,11 +105,8 @@ class pyFDMNES(object):
         self.Atom = {}
         self.extract = False
         self.Absorber = ()
-        self.convolution = True
-        self.Cal = {}
+        # self.convolution = True
         self.Exp = {}
-        self.Scan = []
-        self.Scan_conv = []
         self.P = Parameters()
         self._WD = os.getcwd()
         
@@ -317,7 +312,7 @@ class pyFDMNES(object):
             else:
                 line += (label,)
                 output.append("%i %.10g %.10g %.10g !%s"%line)
-
+        
         for Group in Defaults:
             if Group.has_key("SCF") and not Group["SCF"]:
                 continue
@@ -643,7 +638,7 @@ class pyFDMNES(object):
         dafs = np.loadtxt(fname, skiprows = skiprows)
         return dafs
         
-    def do_convolution(self, path):
+    def do_convolution(self, path = None):
         """
             Method to write a special convolution file. It is also possible to 
             define the convolution parameters in the FileOut method.
@@ -653,11 +648,12 @@ class pyFDMNES(object):
                 path: string
                     Name of the convolution file.
         """
-        
-        self.conv_path = os.path.abspath(path)
+        if path == None:
+            path = "_conv.".join(self.path.split("."))
+            
+        self.path = os.path.abspath(path)
         EXE = os.path.dirname(EXEfile)
-        rel_conv_name = os.path.relpath(self.conv_path,EXE)
-        
+        rel_conv_name = os.path.relpath(self.path,EXE)
         
         try: f = open(path, "w")
         except IOError:
@@ -669,39 +665,50 @@ class pyFDMNES(object):
             
             if hasattr(self, "Cal") and isinstance(self.Cal, dict):
                 key = self.Cal.keys()
-                f.write("Calculation\n")
                 for element in self.Cal:
                     cal_path = os.path.abspath(element) 
                     Calculation = os.path.relpath(cal_path,EXE)
-                    f.write("%s\n" %Calculation)
+                    f.write("Calculation\n%s\n" %Calculation)
                     value = self.Cal[element]
                     val = array2str(value, precision=1)
                    # value = self.Cal_val.values()   
                     f.write("%s\n" %val)
-            else: 
+            elif hasattr(self, "Cal"): 
                 cal_path = os.path.abspath(self.Cal) 
                 Calculation = os.path.relpath(cal_path,EXE)
                 f.write("Calculation\n%s\n" %Calculation)
-             
+            else:
+                cal_path = os.path.relpath(self.new_name + ".txt", EXE)
+                f.write("Calculation\n%s\n" %cal_path)
+            #print("Using previous calculation in %s"%cal_path) 
+            
             if hasattr(self,"Scan") and len(self.Reflex)>0 and len(self.Reflex[0,:])<6:
                 for element in self.Scan:
                     scan_path = os.path.abspath(element) 
-                    Scan = os.path.relpath(scan_path,EXE)
+                    Scan = os.path.relpath(scan_path,EXE)  
                     f.write("\nScan\n%s\n" %Scan)
+            elif hasattr(self,"Scan"):
+                Scan = os.path.relpath(self.new_name + "_scan.txt", EXE)     
+                f.write("\nScan\n%s\n" %Scan)
               
-            if hasattr(self,"Scan_conv"):
+            if hasattr(self,"Scan_conv") and path!= None:
                 for element in self.Scan_conv:
                     scan_conv_path = os.path.abspath(element) 
                     Scan_conv = os.path.relpath(scan_conv_path,EXE)
                     f.write("\nScan_conv\n%s\n" %Scan_conv)
+            elif hasattr(self,"Scan_conv"):
+                Scan_conv = os.path.relpath(self.new_name + "_scan_conv.txt", EXE)
+                f.write("\nScan_conv\n%s\n" %Scan_conv)
         
             if hasattr(self,"Conv_out"):
                 name = "\\" + self.Conv_out
-                Conv_out = os.path.dirname(rel_conv_name) + name
-                f.write("\nConv_out\n%s\n" %Conv_out)
+            else:
+                name = self.new_name + "_conv.txt"
+            Conv_out = os.path.relpath(name, EXE)
+            f.write("\nConv_out\n%s\n" %Conv_out)
                 
             if hasattr(self, "Exp") and len(self.Exp)>0:
-                f.write("Experiment\n")
+                f.write("\nExperiment\n")
                 key = self.Exp.keys()
                 for element in self.Exp:
                     exp_path = os.path.abspath(element) 
@@ -758,7 +765,7 @@ class pyFDMNES(object):
                     setattr(self, varname, int(getattr(self,varname)))
                     
                 if varname in vars_bool:
-                    setattr(self, varname, float(getattr(self,varname)))
+                    setattr(self, varname, bool(getattr(self,varname)))
                 
              #   if varname in vars_string:
                 #    setattr(self, varname, float(getattr(self,varname)))
