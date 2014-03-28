@@ -15,7 +15,7 @@ import collections
 from settings import Defaults, ParamTypes
 
 
-EXEfile = os.path.abspath('/space/crichter/backup/Programme/FDMNES/fdmnes_2013_12_12/fdmnes_linux64')
+EXEfile = os.path.abspath('/home/carsten/DESY/Programme/FDMNES/fdmnes_2013_12_12/fdmnes_linux64')
 
 
 def array2str(array, precision=4):
@@ -61,7 +61,7 @@ class ConsistencyError(Exception):
         self.value = value
         self.errmsg = errmsg
     def __str__(self):
-        return self.value + os.lsep + "Message: %s" %self.errmsg
+        return self.value + os.linesep + "Message: %s" %self.errmsg
 
 
 class Parameters(dict):
@@ -153,7 +153,7 @@ class pyFDMNES(object):
         if len(position) is not 3:
             raise TypeError("Enter 3D position object!")
         
-        position = tuple(position)
+        position = np.array(position)
         #label = label.replace("_", "")
         labeltest = label[0].upper()
         if len(label) > 1:
@@ -196,14 +196,15 @@ class pyFDMNES(object):
         """
         if not os.path.isfile(path):
             raise IOError("File not found!")
+        import CifFile
         try:
             cf = CifFile.ReadCif(path)
             cb = cf.first_block()
         except Exception as e:
             print("File doesn't seem to be a valid .cif file: %s"%path)
             print e
+            return
         
-        import CifFile
         self.Crystal = True
         # Reset Structure:
         self.positions.clear()
@@ -211,11 +212,11 @@ class pyFDMNES(object):
         self.P.Absorber = ()
         self.P.Z_absorber = 0
         
-        if cb.has_key("_symmetry_int_tables_number")
+        if cb.has_key("_symmetry_int_tables_number"):
             self.sg_num = mkfloat(cb["_symmetry_int_tables_number"])
         
-        if cb.has_key("_symmetry_space_group_name_h-m")
-            self.sg_name = mkfloat(cb["_symmetry_space_group_name_h-m"])
+        if cb.has_key("_symmetry_space_group_name_h-m"):
+            self.sg_name = cb["_symmetry_space_group_name_h-m"]
             self.sg_name = self.sg_name.replace(" ", "")
             i = self.sg_name.find(":")
             if i>=0:
@@ -253,15 +254,14 @@ class pyFDMNES(object):
             numconf = len(self.P.Atom)
             if not numconf == numspecies:
                 raise ConsistencyError(errmsg="Number of given electron "
-                    "configurations (%i) does not match number of "%numconf\
-                    "different species in structure (%i)"%numspecies)
+                    "configurations (%i) does not match number of different "
+                    "species in structure (%i)"%(numconf,numspecies))
             if self.P.has_key("Atom_conf") and len(self.P.Atom_conf):
                 raise ConsistencyError(errmsg="Electronic configuration"
                     "given twice: Parameters Atom and Atom_conf")
         return True
-                
-        
-    def skip_group(self, Group, TestGroup="all")
+
+    def skip_group(self, Group, TestGroup="all"):
         if TestGroup=="all":
             TestGroup = ["SCF", "Convolution", "Extract", "Reflection"]
         for Name in TestGroup:
@@ -269,6 +269,45 @@ class pyFDMNES(object):
                 if not hasattr(self.P, Name) or not self.P[Name]:
                     return True
         return False
+    
+    def write_structure(self):
+        output = []
+        if hasattr(self,"sg_num"):    
+            sg = "Spgroup%s%i"%(os.linesep, self.sg_num)
+        if hasattr(self,"cscode"):
+            sg += os.linesep + self.cscode
+        else:
+            output.append(sg)
+        
+        if any(map(lambda x: x<1, self.occupancy.values())):
+            suffix = "_t"
+        else:
+            suffix = ""
+        if self.Crystal == True:
+            output.append("Crystal"+suffix)
+        else:
+            output.append("Molecule"+suffix)
+        
+        cell = (self.a, self.b, self.c, self.alpha, self.beta, self.gamma)
+        output.append("  %g %g %g %g %g %g" %cell)
+        
+        self.check_parameters("Atom")
+        for label in self.positions.iterkeys():
+            if len(self.P.Atom):
+                atomnum = self.P.Atom.index(self.Z[label]) + 1
+            else:
+                atomnum = self.Z[label]
+            pos = tuple(self.positions[label])
+            line = (atomnum,) + pos
+            if suffix != "":
+                occ = self.occupancy[label]
+                line += (occ,label)
+                output.append("%i %.10g %.10g %.10g %.g !%s"%line)
+            else:
+                line += (label,)
+                output.append("%i %.10g %.10g %.10g !%s"%line)
+        
+        return output
     
     def FileOut(self, path, overwrite=False):
         """ Method writes an input file for the FDMNES calculation.
@@ -285,60 +324,23 @@ class pyFDMNES(object):
                 Has to be True to overwrite existing input file.
         """
         if os.path.isfile(path) and not overwrite:
-            raise IOError("File %s already exists. "%path
-                          "Use overwrite=True to replace it.")
+            raise IOError("File %s already exists. "
+                          "Use overwrite=True to replace it."%path)
         
-        self.path_in = path
-        
-        output = []
-        
+        self.path = path
         basepath = os.path.splitext(path)[0]
+        
         if "_inp" in path:
             self.path_out = basepath.replace("_inp","_out")
         else:
             self.path_out = basepath + "_out"
-            self.path_out = os.path.relpath(path_out, self.fdmnes_dir)
-        output.append("Filout")
+        self.path_out = os.path.relpath(self.path_out, self.fdmnes_dir)
+        output = ["Filout"]
         output.append(self.path_out)
         
         self.bavfile = self.path_out + "_bav.txt"
         
-        
-        if hasattr(self,"sg_num"):    
-            sg = "Spgroup%s%i"%(os.linesep, self.sg_num)
-        if hasattr(self,"cscode"):
-            sg += os.linesep + self.cscode
-        else:
-            output.append(sg)
-        
-        
-        if any(map(lambda x: x<1, self.occupancy.values())):
-            suffix = "_t"
-        else:
-            suffix = ""
-        if self.Crystal == True:
-            output.append("Crystal"+suffix)
-        else:
-            output.append("Molecule"+suffix)
-        
-        cell = (self.a, self.b, self.c, self.alpha, self.beta, self.gamma)
-        output.append("  %g %g %g %g %g %g" %cell)
-        
-        self.check_parameters("Atom")
-        for label in self.positions.iterkeys():
-            if len(self.P.Atom) and len(self.P.Atom):
-                atomnum = self.P.Atom.index(self.Z[label]) + 1
-            else:
-                atomnum = self.Z[label]
-            pos = self.positions[label]
-            line = (atomnum,) + pos
-            if suffix != "":
-                occ = self.occupancy[label]
-                line += (occ,label)
-                output.append("%i %.10g %.10g %.10g %.g !%s"%line)
-            else:
-                line += (label,)
-                output.append("%i %.10g %.10g %.10g !%s"%line)
+        output.extend(self.write_structure())
         
         for Group in Defaults:
             if self.skip_group(Group):
@@ -346,45 +348,53 @@ class pyFDMNES(object):
             for keyw in Group.iterkeys():
                 if self.P.has_key(keyw) and self.P[keyw]!=Group[keyw]:
                     deftype = type(Group[keyw])
-                    assert isinstance(self.P[keyw], deftype),
+                    assert isinstance(self.P[keyw], deftype),\
                         "Wrong type: Parameter %s has to be of type %s"\
                             %(keyw, deftype)
                     self.check_parameters(keyw) # t.b.w.
+                    print("-> %s"%keyw)
+                    value = param2str(self.P[keyw])
                     output.append(keyw)
-                    output.append(param2str(self.P[keyw]))
-
+                    if value:
+                        output.append(value)
+        
+        # print empty line before each keyword
+        for keyw in self.P.viewkeys():
+            if keyw in output:
+                ind = output.index(keyw)
+                output.insert(ind, "")
         with open(path, "w") as f:
-            f.writelines(output)
-        #####################################################################
+            f.writelines(os.linesep.join(output))
         
     def FDMNESfile(self):
         """
             Method to start the FDMNES calculation of the created input file.
         """
         
-        assert hasattr(self, "path"), 
-            "Attribute `path` has not been defined. Try pyFDMNES.FileOut() first"
+        assert hasattr(self, "path"), \
+            "Attribute `path` has not been defined. "\
+            "Try pyFDMNES.FileOut() first."
         
         fdmfile = os.path.join(self.fdmnes_dir, "fdmfile.txt")
-        path_in = os.path.relpath(self.path_in, self.fdmnes_dir)
+        path = os.path.relpath(self.path, self.fdmnes_dir)
         
-        try: f = open(fdmfile,"w")
-        except IOError:
-            print "Error: fdmfile not open"
+        output = []
+        if hasattr(self,"conv_path"):
+            Run_File = 2 
+            Input_conv = os.path.relpath(self.conv_path, self.fdmnes_exe)
+            output.append("%i"%Run_File)
+            output.append("")
+            output.append("%s"%path)
+            output.append("%s"%Input_conv)
+        else:
+            Run_File = 1
+            output.append("%i"%Run_File)
+            output.append("")
+            output.append("%s"%path)
         
-        else: 
-            print "Written fdmfile was successfully"
-            
-            if hasattr(self,"conv_path"):
-                Run_File = 2 
-                Input_conv = os.path.relpath(self.conv_path, os.path.dirname(EXEfile))
-                f.write("\n%i\n\n%s\n%s\n" %(Run_File,Input,Input_conv))
-            else:
-                Run_File = 1
-                f.write("\n%i\n\n%s\n" %(Run_File,Input))
+        with open(fdmfile, "w") as f:
+            f.writelines(os.linesep.join(output))
         
-        finally: 
-            f.close()
         
         os.chdir(self.fdmnes_dir)
         logpath = os.path.join(self._WD, "fdmnes.log")
@@ -394,7 +404,7 @@ class pyFDMNES(object):
             stdout = None
         else:
             stdout = logfile
-            print("Output written to:%s%s"%(os.linesep, logpath))
+            print("Writing output to:%s%s"%(os.linesep, logpath))
         try:
             self.proc = subprocess.Popen(EXEfile, stdout=stdout) #stderr = errfile)
             self.proc.wait()
@@ -405,20 +415,21 @@ class pyFDMNES(object):
             print("Message: %s"%e)
         finally:
             logfile.close()
-            os.chdir(self.workdir)
+            os.chdir(self._WD)
         
     def retrieve(self):
         """ Method to check the excisting of the created BAV file.
         """
-        if (not hasattr(self, "proc") or self.proc.poll() != None) and os.path.exists(self.bav):
-            bav_open  = open(self.bav)
+        if (not hasattr(self, "proc") or self.proc.poll() != None) \
+            and os.path.exists(self.bavfile):
+            bav_open  = open(self.bavfile)
             line = bav_open.readlines()
             if ("Have a beautiful day !") in line[-1]:
                 print("Process finished successfully")
         else: print("Process wasn't sucessfully")
             
             
-    def Filein (self, fname):
+    def Filein(self, fname):
         """
             Method to readout exist input files. It is possible to get 
             informations about the Radius, Range, Atom configuration and Crystal
@@ -444,7 +455,7 @@ class pyFDMNES(object):
         keywords_string = ["Absorber","Edge","Range"]
                 
         self.new_name = os.path.splitext(fname)[0].replace("_inp","_out")
-        self.bav = self.new_name + "_bav.txt"
+        self.bavfile = self.new_name + "_bav.txt"
 
        # if "Range" in content_red:
            #     self.Range = content_red[content_red.index("Range")+1]
@@ -584,7 +595,7 @@ class pyFDMNES(object):
                 azimuth: int
                     azimuthal angle
                 conv: bool
-                    convolution information
+                    convoluted data
         """
         
         self.Reflex = self.Reflex.round(0)

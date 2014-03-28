@@ -11,7 +11,7 @@ ParamTypes = namedtuple("ParamTypes", ("Basic",
                                        "Extract", 
                                        "Experiment"))
 
-Defaults = ParamTypes({}, {}, {}, {}, {})
+Defaults = ParamTypes({}, {}, {}, {}, {}, {}, {}, {})
 
 Defaults.SCF['Delta_E_conv'] = 1.
 Defaults.SCF['N_self'] = 30
