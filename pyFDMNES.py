@@ -1,9 +1,14 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-F
-"""
-Created on Thu Jul 25 17:03:33 2013
-
-@author: weiget
-"""
+#----------------------------------------------------------------------
+# Description:
+# Author: Carsten Richter <carsten.richter@desy.de>
+# Author: Tina Weigel <tina.weigel@student.tu-freiberg.de>
+# Created on Thu Jul 25 17:03:33 2013
+# System: Linux 3.2.0-60-generic on x86_64
+#
+# Copyright (c) 2014 Carsten Richter, Tina Weigel  All rights reserved.
+#----------------------------------------------------------------------
 
 import numpy as np
 import StringIO
@@ -12,10 +17,14 @@ import elements
 import subprocess
 import string
 import collections
-from settings import Defaults, ParamTypes
+import settings
+import ConfigParser
 
 
-EXEfile = os.path.abspath('/home/carsten/DESY/Programme/FDMNES/fdmnes_2013_12_12/fdmnes_linux64')
+conffile = os.path.join(os.path.dirname(__file__), "config.ini")
+conf = ConfigParser.ConfigParser()
+conf.read(conffile)
+
 
 
 def array2str(array, precision=4):
@@ -84,13 +93,14 @@ class Parameters(dict):
 
 
 
-class pyFDMNES(object):
+class fdmnes(object):
     """ 
-        Python programm  for FDMNES application.
+        Python interface to the x-ray spectroscopy simulation software FDMNES.
+        Easy handling of FDMNES data input and output.
     """
     
     def __init__(self, structure, resonant="", verbose=False, 
-                       fdmnes_exe=EXEfile):
+                       fdmnes_path=None):
         """
             Calculation of spectra for x-ray absorption spectroscopy with
             FDMNES for given parameters and structures in the following steps:
@@ -120,8 +130,15 @@ class pyFDMNES(object):
         self.P = Parameters()
         self._WD = os.getcwd()
         
+        
+        ### LOAD STRUCTURE #################################################
         if str(structure).isdigit():
-            int(structure)
+            self.sg_num = int(structure)
+            self.a, self.b, self.c, \
+            self.alpha, self.beta, self.gamma = 1, 1, 1, 90, 90, 90
+            self.cif = False
+        elif isinstance(structure, (tuple, list, np.ndarray)):
+            structure = np.ravel(structure).astype(float)
             self.a, self.b, self.c, \
             self.alpha, self.beta, self.gamma = structure
             self.cif = False
@@ -132,8 +149,33 @@ class pyFDMNES(object):
              elif end == ".txt":
                  self.Filein(structure)
         
-        self.fdmnes_dir = os.path.dirname(fdmnes_exe)
-        self.fdmnes_exe = fdmnes_exe
+        ### FIND FDMNES ####################################################
+        if fdmnes_path==None:
+            if not conf.has_option("global", "fdmnes_path"):
+                raise ValueError(
+                    "No entry for ``fdmnes_path'' found in config file:%s%s"\
+                    %(os.linesep, conffile))
+            else:
+                fdmnes_path = conf.get("global", "fdmnes_path")
+                fdmnes_path = os.path.expanduser(fdmnes_path)
+                fdmnes_path = os.path.abspath(fdmnes_path)
+        
+        self.fdmnes_dir = os.path.dirname(fdmnes_path)
+        self.fdmnes_exe = fdmnes_path
+        fdmnes_bin = os.path.basename(fdmnes_path)
+        
+        for fname in [fdmnes_bin, "xsect.dat", "spacegroup.txt"]:
+            fpath = os.path.join(self.fdmnes_dir, fname)
+            if not os.path.isfile(fpath):
+                raise ValueError(
+                    """
+                        File %s not found in %s
+                        
+                        Have you entered a valid path in %s?
+                        It must point on the fdmnes executable.
+                        Further, the files xsect.dat and spacegroup.txt are
+                        required in the same folder.
+                    """%(fname, self.fdmnes_dir, conffile))
     
     def add_atom(self, label, position, resonant=False):
         """
@@ -146,7 +188,10 @@ class pyFDMNES(object):
                     It has to be unique and to start with the symbold of the
                     chemical element.
                 position : iterable of length 3
-                    Postion of the atoms in the structure
+                    Postion of the atoms in the structure.
+                resonant : bool
+                    Specifies whether this atom is taking part in resonant
+                    scattering / absorption.
         """
         if type(label) is not str:
             raise TypeError("Invalid label. Need string.")
@@ -247,6 +292,9 @@ class pyFDMNES(object):
         
     
     def check_parameters(self, keyw):
+        """
+            Checks configured FDMNES parameters for consistency.
+        """
         if not self.P.has_key(keyw):
             return True
         if keyw=="Atom" and len(self.P.Atom):
@@ -261,7 +309,7 @@ class pyFDMNES(object):
                     "given twice: Parameters Atom and Atom_conf")
         return True
 
-    def skip_group(self, Group, TestGroup="all"):
+    def _skip_group(self, Group, TestGroup="all"):
         if TestGroup=="all":
             TestGroup = ["SCF", "Convolution", "Extract", "Reflection"]
         for Name in TestGroup:
@@ -271,13 +319,18 @@ class pyFDMNES(object):
         return False
     
     def write_structure(self):
+        """
+            Returns the structure as it is understood by FDMNES as a list
+            of lines.
+        """
         output = []
         if hasattr(self,"sg_num"):    
             sg = "Spgroup%s%i"%(os.linesep, self.sg_num)
         if hasattr(self,"cscode"):
             sg += os.linesep + self.cscode
-        else:
-            output.append(sg)
+        
+        output.append(sg)
+        output.append(os.linesep)
         
         if any(map(lambda x: x<1, self.occupancy.values())):
             suffix = "_t"
@@ -310,11 +363,10 @@ class pyFDMNES(object):
         return output
     
     def FileOut(self, path, overwrite=False):
-        """ Method writes an input file for the FDMNES calculation.
-            Further calculation parameters, for example Range and Radius
-            have to given of the user. It is also possible to get parameter
-            from an exist input file and add to new parameters. 
-            For this use the keyword "extract". 
+        """ 
+            Method writes an input file for the FDMNES calculation.
+            The calculation parameters, for example Range and Radius etc., 
+            are taken from the fdmnes.P NamedTuple. 
          
             Input:
             ------
@@ -334,16 +386,20 @@ class pyFDMNES(object):
             self.path_out = basepath.replace("_inp","_out")
         else:
             self.path_out = basepath + "_out"
-        self.path_out = os.path.relpath(self.path_out, self.fdmnes_dir)
         output = ["Filout"]
         output.append(self.path_out)
+        output.append(os.linesep)
+        
+        output.append("Folder_dat")
+        output.append(self.fdmnes_dir)
+        output.append(os.linesep)
         
         self.bavfile = self.path_out + "_bav.txt"
         
         output.extend(self.write_structure())
         
-        for Group in Defaults:
-            if self.skip_group(Group):
+        for Group in settings.Defaults:
+            if self._skip_group(Group):
                 continue
             for keyw in Group.iterkeys():
                 if self.P.has_key(keyw) and self.P[keyw]!=Group[keyw]:
@@ -373,31 +429,28 @@ class pyFDMNES(object):
         
         assert hasattr(self, "path"), \
             "Attribute `path` has not been defined. "\
-            "Try pyFDMNES.FileOut() first."
+            "Try fdmnes.FileOut() first."
         
-        fdmfile = os.path.join(self.fdmnes_dir, "fdmfile.txt")
-        path = os.path.relpath(self.path, self.fdmnes_dir)
+        fdmfile = "fdmfile.txt"
         
         output = []
         if hasattr(self,"conv_path"):
             Run_File = 2 
-            Input_conv = os.path.relpath(self.conv_path, self.fdmnes_exe)
             output.append("%i"%Run_File)
             output.append("")
-            output.append("%s"%path)
-            output.append("%s"%Input_conv)
+            output.append("%s"%self.path)
+            output.append("%s"%self.conv_path)
         else:
             Run_File = 1
             output.append("%i"%Run_File)
             output.append("")
-            output.append("%s"%path)
+            output.append("%s"%self.path)
         
         with open(fdmfile, "w") as f:
             f.writelines(os.linesep.join(output))
         
         
-        os.chdir(self.fdmnes_dir)
-        logpath = os.path.join(self._WD, "fdmnes.log")
+        logpath = "fdmnes.log"
         logfile = open(logpath, "w")
         #errfile = open(os.path.join(self.workdir, "fdmnes_error.txt", "w"))
         if self.verbose:
@@ -406,7 +459,8 @@ class pyFDMNES(object):
             stdout = logfile
             print("Writing output to:%s%s"%(os.linesep, logpath))
         try:
-            self.proc = subprocess.Popen(EXEfile, stdout=stdout) #stderr = errfile)
+            self.proc = subprocess.Popen(self.fdmnes_exe, stdout=stdout)
+                                                      #stderr = errfile)
             self.proc.wait()
             print("FDMNES simulation finished")
         except Exception as e:
@@ -415,7 +469,6 @@ class pyFDMNES(object):
             print("Message: %s"%e)
         finally:
             logfile.close()
-            os.chdir(self._WD)
         
     def retrieve(self):
         """ Method to check the excisting of the created BAV file.
@@ -454,8 +507,8 @@ class pyFDMNES(object):
                           "N_self","P_self","R_self", "Delta_E_conv","Hubbard"]
         keywords_string = ["Absorber","Edge","Range"]
                 
-        self.new_name = os.path.splitext(fname)[0].replace("_inp","_out")
-        self.bavfile = self.new_name + "_bav.txt"
+        self.path_out = os.path.splitext(fname)[0].replace("_inp","_out")
+        self.bavfile = self.path_out + "_bav.txt"
 
        # if "Range" in content_red:
            #     self.Range = content_red[content_red.index("Range")+1]
@@ -549,7 +602,7 @@ class pyFDMNES(object):
       #  self.Atom = dict(Atom)
              #   self.pos = positions
              #   return self.pos
-                            
+            
        #         self.Crysatal = line
         #        self.cell = content_red[content_red.index(line)+1]
          #       while 
@@ -569,17 +622,17 @@ class pyFDMNES(object):
             
         """
         if conv == True:
-            fname = self.new_name + "_conv.txt" 
+            fname = self.path_out + "_conv.txt" 
             skiprows = 1
         else:
-            fname = self.new_name + ".txt"
+            fname = self.path_out + ".txt"
             skiprows = 4
         
         data = np.loadtxt(fname, skiprows = skiprows)
         return data
         
         
-    def get_dafs (self, Reflex, pol_in, pol_out, azimuth, conv = True):
+    def get_dafs(self, Reflex, pol_in, pol_out, azimuth, conv = True):
         """
             Method to read-out the calculated DAFS datas. It's possible to get 
             the DAFS data's for given paramters with and without convolusion.
@@ -601,12 +654,12 @@ class pyFDMNES(object):
         self.Reflex = self.Reflex.round(0)
     
         if conv == True:
-            fname = os.path.abspath(self.new_name) + "_conv.txt"  
+            fname = os.path.abspath(self.path_out) + "_conv.txt"  
             skiprows = 1  
             a = 0
 
         else:
-            fname = os.path.abspath(self.new_name) + ".txt"
+            fname = os.path.abspath(self.path_out) + ".txt"
             skiprows = 4
             a = 3
                    
@@ -682,10 +735,6 @@ class pyFDMNES(object):
         if path == None:
             path = "_conv.".join(self.path.split("."))
             
-        self.path = os.path.abspath(path)
-        EXE = os.path.dirname(EXEfile)
-        rel_conv_name = os.path.relpath(self.path,EXE)
-        
         try: f = open(path, "w")
         except IOError:
             print "Error: No new file open"
@@ -697,54 +746,26 @@ class pyFDMNES(object):
             if hasattr(self, "Cal") and isinstance(self.Cal, dict):
                 key = self.Cal.keys()
                 for element in self.Cal:
-                    cal_path = os.path.abspath(element) 
-                    Calculation = os.path.relpath(cal_path,EXE)
-                    f.write("Calculation\n%s\n" %Calculation)
+                    f.write("Calculation\n%s\n" %element)
                     value = self.Cal[element]
                     val = array2str(value, precision=1)
                    # value = self.Cal_val.values()   
                     f.write("%s\n" %val)
             elif hasattr(self, "Cal"): 
-                cal_path = os.path.abspath(self.Cal) 
-                Calculation = os.path.relpath(cal_path,EXE)
-                f.write("Calculation\n%s\n" %Calculation)
+                f.write("Calculation\n%s\n" %self.Cal)
             else:
-                cal_path = os.path.relpath(self.new_name + ".txt", EXE)
-                f.write("Calculation\n%s\n" %cal_path)
+                pass
             #print("Using previous calculation in %s"%cal_path) 
             
-            if hasattr(self,"Scan") and len(self.Reflex)>0 and len(self.Reflex[0,:])<6:
-                for element in self.Scan:
-                    scan_path = os.path.abspath(element) 
-                    Scan = os.path.relpath(scan_path,EXE)  
-                    f.write("\nScan\n%s\n" %Scan)
-            elif hasattr(self,"Scan"):
-                Scan = os.path.relpath(self.new_name + "_scan.txt", EXE)     
-                f.write("\nScan\n%s\n" %Scan)
-              
-            if hasattr(self,"Scan_conv") and path!= None:
-                for element in self.Scan_conv:
-                    scan_conv_path = os.path.abspath(element) 
-                    Scan_conv = os.path.relpath(scan_conv_path,EXE)
-                    f.write("\nScan_conv\n%s\n" %Scan_conv)
-            elif hasattr(self,"Scan_conv"):
-                Scan_conv = os.path.relpath(self.new_name + "_scan_conv.txt", EXE)
-                f.write("\nScan_conv\n%s\n" %Scan_conv)
-        
-            if hasattr(self,"Conv_out"):
-                name = "\\" + self.Conv_out
-            else:
-                name = self.new_name + "_conv.txt"
-            Conv_out = os.path.relpath(name, EXE)
-            f.write("\nConv_out\n%s\n" %Conv_out)
+            conv_out = self.path_out + "_conv.txt"
+            f.write("\nConv_out\n%s\n" %conv_out)
                 
             if hasattr(self, "Exp") and len(self.Exp)>0:
                 f.write("\nExperiment\n")
                 key = self.Exp.keys()
                 for element in self.Exp:
                     exp_path = os.path.abspath(element) 
-                    Exp = os.path.relpath(exp_path,EXE)
-                    f.write(" %s\n" %Exp)
+                    f.write(" %s\n" %exp_path)
                     value = self.Exp[element]
                     val = array2str(value, precision=1)
                    # value = self.Cal_val.values()   
@@ -772,4 +793,4 @@ class pyFDMNES(object):
                 
         finally: 
                 f.close()
-        
+

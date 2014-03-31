@@ -109,7 +109,3 @@ Defaults.Experiment["Gen_shift"] = [0.,0.,0]
 Defaults.Experiment["Emin"] = nan
 Defaults.Experiment["Emax"] = nan
 Defaults.Experiment["Kev"] = False
-
-
-
-

@@ -8,3 +8,4 @@ trash/
 *.pyc
 *~
 examples/*.txt
+config.ini
