@@ -64,6 +64,19 @@ def mkfloat(string):
     return float(string)
 
 
+def keyword_exists(key):
+    key = key.lower()
+    keyset = None
+    for Group in settings.Defaults:
+        keys = Group.keys()
+        keysl = map(str.lower, keys)
+        if key in keysl:
+            i = keysl.index(key)
+            keyset = keys[i]
+            break
+    return keyset
+
+
 class ConsistencyError(Exception):
     def __init__(self, value="Inconsistent parameter values found.", 
                        errmsg="", identifier=None):
@@ -71,6 +84,8 @@ class ConsistencyError(Exception):
         self.errmsg = errmsg
     def __str__(self):
         return self.value + os.linesep + "Message: %s" %self.errmsg
+
+
 
 
 class Parameters(dict):
@@ -84,7 +99,13 @@ class Parameters(dict):
             raise TypeError, 'expected dict'
 
     def __setitem__(self, key, value):
-        dict.__setitem__(self, key, value)
+        keyset = keyword_exists(key)
+        if keyset == None:
+            raise ValueError(
+                "'%s' not found in list of valid FDMNES paramters."%key
+            )
+        else:
+            dict.__setitem__(self, keyset, value)
 
     def __getitem__(self, key):
         return dict.__getitem__(self, key)
@@ -121,15 +142,10 @@ class fdmnes(object):
         self.Z = {}
         self.occupancy = {}
         self.Crystal = True
-        self.Polarise = []
-        self.Atom = {}
-        self.extract = False
-        self.Absorber = ()
         # self.convolution = True
         self.Exp = {}
         self.P = Parameters()
-        self._WD = os.getcwd()
-        
+        self.Jobs = []
         
         ### LOAD STRUCTURE #################################################
         if str(structure).isdigit():
@@ -146,8 +162,13 @@ class fdmnes(object):
              end = os.path.splitext(structure)[1].lower()
              if end == ".cif":
                  self.load_cif(structure, resonant)
+                 self.cif = True
              elif end == ".txt":
                  self.Filein(structure)
+        else:
+            raise ValueError(
+                "Invalid input for structure (file not found): %s"\
+                %str(structure))
         
         ### FIND FDMNES ####################################################
         if fdmnes_path==None:
@@ -379,6 +400,8 @@ class fdmnes(object):
             raise IOError("File %s already exists. "
                           "Use overwrite=True to replace it."%path)
         
+        
+        
         self.path = path
         basepath = os.path.splitext(path)[0]
         
@@ -421,30 +444,31 @@ class fdmnes(object):
                 output.insert(ind, "")
         with open(path, "w") as f:
             f.writelines(os.linesep.join(output))
-        
-    def FDMNESfile(self):
-        """
-            Method to start the FDMNES calculation of the created input file.
-        """
-        
+    
+    def AddToJobs(self):
         assert hasattr(self, "path"), \
             "Attribute `path` has not been defined. "\
-            "Try fdmnes.FileOut() first."
+            "Run fdmnes.FileOut() first."
+        self.Jobs.append(self.path)
         
+    
+    def FDMNESfile(self, jobs="current"):
+        """
+            Method to write the ``fdmfile.txt'' and, subsequently, to start
+            the FDMNES simulation.
+        """
+        if jobs=="current":
+            assert hasattr(self, "path"), \
+                "Attribute `path` has not been defined. "\
+                "Run fdmnes.FileOut() first."
+            jobs = [self.path]
         fdmfile = "fdmfile.txt"
         
         output = []
-        if hasattr(self,"conv_path"):
-            Run_File = 2 
-            output.append("%i"%Run_File)
-            output.append("")
-            output.append("%s"%self.path)
-            output.append("%s"%self.conv_path)
-        else:
-            Run_File = 1
-            output.append("%i"%Run_File)
-            output.append("")
-            output.append("%s"%self.path)
+        Run_File = 1
+        output.append("%i"%(len(jobs)+1))
+        output.append("")
+        output.extend(jobs)
         
         with open(fdmfile, "w") as f:
             f.writelines(os.linesep.join(output))
@@ -471,7 +495,8 @@ class fdmnes(object):
             logfile.close()
         
     def retrieve(self):
-        """ Method to check the excisting of the created BAV file.
+        """ 
+            Method to check the existing of the created BAV file.
         """
         if (not hasattr(self, "proc") or self.proc.poll() != None) \
             and os.path.exists(self.bavfile):
@@ -482,17 +507,14 @@ class fdmnes(object):
         else: print("Process wasn't sucessfully")
             
             
-    def Filein(self, fname):
+    def FileIn(self, fname):
         """
-            Method to readout exist input files. It is possible to get 
-            informations about the Radius, Range, Atom configuration and Crystal
-            structure and also different calculation parameters.
-            
+            Method to read an existing input file.
 
             Input:
             ------
                 fname: string
-                    Name of the input file.
+                    Path to the input file.
         """
         fobject = open(fname, "r")
         content = fobject.read()
