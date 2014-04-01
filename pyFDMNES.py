@@ -102,7 +102,7 @@ class Parameters(dict):
         keyset = keyword_exists(key)
         if keyset == None:
             raise ValueError(
-                "'%s' not found in list of valid FDMNES paramters."%key
+                "'%s' not found in list of valid FDMNES parameters."%key
             )
         else:
             dict.__setitem__(self, keyset, value)
@@ -351,7 +351,7 @@ class fdmnes(object):
             sg += os.linesep + self.cscode
         
         output.append(sg)
-        output.append(os.linesep)
+        output.append("")
         
         if any(map(lambda x: x<1, self.occupancy.values())):
             suffix = "_t"
@@ -411,11 +411,11 @@ class fdmnes(object):
             self.path_out = basepath + "_out"
         output = ["Filout"]
         output.append(self.path_out)
-        output.append(os.linesep)
+        output.append("")
         
         output.append("Folder_dat")
         output.append(self.fdmnes_dir)
-        output.append(os.linesep)
+        output.append("")
         
         self.bavfile = self.path_out + "_bav.txt"
         
@@ -446,22 +446,34 @@ class fdmnes(object):
             f.writelines(os.linesep.join(output))
     
     def AddToJobs(self):
+        """
+            Add the current job (the current input file) to the list of jobs.
+        """
         assert hasattr(self, "path"), \
             "Attribute `path` has not been defined. "\
             "Run fdmnes.FileOut() first."
         self.Jobs.append(self.path)
         
     
-    def FDMNESfile(self, jobs="current"):
+    def Run(self, jobs="last", wait=False):
         """
             Method to write the ``fdmfile.txt'' and, subsequently, to start
             the FDMNES simulation.
+            By default, the last job (input file) will be run. By giving 
+            the additional argument ``jobs'' one can define a list of jobs
+            (= paths to input files) that will be processed.
         """
-        if jobs=="current":
+        if jobs=="last":
             assert hasattr(self, "path"), \
                 "Attribute `path` has not been defined. "\
                 "Run fdmnes.FileOut() first."
             jobs = [self.path]
+        if len(jobs)==0:
+            print("Warning: No jobs to process!")
+            return None
+        
+        self.Jobs = jobs
+        
         fdmfile = "fdmfile.txt"
         
         output = []
@@ -485,8 +497,9 @@ class fdmnes(object):
         try:
             self.proc = subprocess.Popen(self.fdmnes_exe, stdout=stdout)
                                                       #stderr = errfile)
-            self.proc.wait()
-            print("FDMNES simulation finished")
+            if wait:
+                self.proc.wait()
+            print("FDMNES simulation finished.")
         except Exception as e:
             print("An error occured when running FDMNES executable at")
             print(self.fdmnes_exe)
@@ -494,19 +507,49 @@ class fdmnes(object):
         finally:
             logfile.close()
         
-    def retrieve(self):
+    def Status(self, full_output=False):
         """ 
-            Method to check the existing of the created BAV file.
+            Method to check the status of running simulations.
+            
+            Returns:
+                True, if a process is running
+                False, if no process is running
         """
-        if (not hasattr(self, "proc") or self.proc.poll() != None) \
-            and os.path.exists(self.bavfile):
-            bav_open  = open(self.bavfile)
-            line = bav_open.readlines()
-            if ("Have a beautiful day !") in line[-1]:
-                print("Process finished successfully")
-        else: print("Process wasn't sucessfully")
-            
-            
+        message = []
+        if not hasattr(self, "proc"):
+            result = False
+            message.append("No process was started.")
+        elif self.proc.poll() == None:
+            result = True
+            message.append("FDMNES simulation is running.")
+            k = len(self.Jobs)
+            for i in range(k):
+                path = self.Jobs[i]
+                if "_inp" in path:
+                    path_out = basepath.replace("_inp","_out")
+                else:
+                    path_out = basepath + "_out"
+                bavfile = path_out + "_bav.txt"
+                if os.path.exists(self.bavfile):
+                    with open(self.bavfile) as bf:
+                        bf.seek(-60, 2)
+                        tail = map(str.strip, bf.readlines())
+                    if tail[-1]=='Have a beautiful day !':
+                        message.append("Job %i/%i finished: %s"%(i,k,path))
+                    else:
+                        message.append("Job %i/%i running: %s"%(i,k,path))
+                else:
+                    message.append("Job %i/%i waiting: %s"%(i,k,path))
+        else:
+            result = False
+            message.append("All %i jobs finished!"%len(self.Jobs))
+        if full_output:
+            return result, message
+        else:
+            print os.linesep.join(message)
+            return result
+        
+        
     def FileIn(self, fname):
         """
             Method to read an existing input file.
