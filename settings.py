@@ -25,6 +25,7 @@ Defaults.Basic["Absorber"] = ()
 Defaults.Basic["Atom"] = []
 Defaults.Basic["Atom_conf"] = []
 Defaults.Basic["Cartesian"] = False
+Defaults.Basic["Crystal_p"] = ""
 Defaults.Basic["Density"] = False
 Defaults.Basic["Edge"] = "K"
 Defaults.Basic["Energpho"] = False
@@ -36,9 +37,10 @@ Defaults.Basic["Polarize"] = []
 Defaults.Basic["Radius"] = 5.67
 Defaults.Basic["Range"] = (-5., 0.5, 60.) # eV with respect to edge
 Defaults.Basic["Relativism"] = False
-Defaults.Basic["Rpotmax"] = 0.
-Defaults.Basic["TDDFT"] = False
 Defaults.Basic["RPA"] = False
+Defaults.Basic["Rpotmax"] = 0.
+Defaults.Basic["Screening"] = []
+Defaults.Basic["TDDFT"] = False
 Defaults.Basic["Z_absorber"] = 0
 
 Defaults.Multipole['Dipmag'] = False
@@ -55,13 +57,13 @@ Defaults.Multipole['No_E2E2'] =  False
 Defaults.Multipole['Octupole'] =  False
 Defaults.Multipole['Quadrupole'] =  False
 
-Defaults.RXS['Azimuth'] = []
+Defaults.RXS['Azimuth'] = ()
 Defaults.RXS['Circular'] = False
 Defaults.RXS['Dead_layer'] = 0.
 Defaults.RXS['Double_cor'] = False
 Defaults.RXS['Full_self_abs'] = False
-Defaults.RXS['Polarization'] = []
-Defaults.RXS['Reflection'] = []
+Defaults.RXS['RXS'] = []
+Defaults.RXS['Reflection'] = ()
 Defaults.RXS['Self_abs'] = False
 Defaults.RXS['Step_azim'] = 2.
 Defaults.RXS['Zero_azim'] = (0.,0.,0.) # 3-tuple float
@@ -97,6 +99,7 @@ Defaults.Convolution["Scan_conv"] = ""
 Defaults.Convolution["Seah"] = [0., 0.] 
 Defaults.Convolution["Selec_core"] = -1
 Defaults.Convolution["Thomson"] = nan
+Defaults.Convolution["Xan_atom"] = False
 
 # To be considered later:
 Defaults.Extract["Extract"] = ""
@@ -109,3 +112,16 @@ Defaults.Experiment["Gen_shift"] = [0.,0.,0]
 Defaults.Experiment["Emin"] = nan
 Defaults.Experiment["Emax"] = nan
 Defaults.Experiment["Kev"] = False
+
+synonyms = dict()
+synonyms["dafs"] = "RXS"
+synonyms["ecrantage"] = "Screening"
+synonyms["gamme"] = "Range"
+synonyms["rayon"] = "Radius"
+synonyms["seuil"] = "Edge"
+
+
+
+
+
+

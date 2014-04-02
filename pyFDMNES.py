@@ -51,6 +51,7 @@ def param2str(param):
     if isinstance(param, float):
         return "%g"%param
     if isinstance(param, list):
+        assert all(map(lambda x: not isinstance(x, list), param))
         return os.linesep.join(map(param2str, param))
     if isinstance(param, tuple):
         assert all(map(lambda x: isinstance(x, (bool,str,int,float,tuple)),
@@ -89,6 +90,9 @@ class ConsistencyError(Exception):
 
 
 class Parameters(dict):
+    """
+        Modified dictionary class that supplies content as attributes.
+    """
     def __init__(self, value=None):
         if value is None:
             pass
@@ -111,6 +115,9 @@ class Parameters(dict):
         return dict.__getitem__(self, key)
     __setattr__ = __setitem__
     __getattr__ = __getitem__
+    
+    def __dir__(self):
+        return dir(dict) + self.keys()
 
 
 
@@ -136,6 +143,12 @@ class fdmnes(object):
                                 - path to .cif-file
         """
         self.positions = collections.OrderedDict() # symmetric unit
+        self.Defaults = settings.Defaults
+        self.Groups = self.Defaults._fields
+        self.GroupMembers = dict()
+        for Group in self.Groups:
+            for Member in getattr(self.Defaults, Group):
+                self.GroupMembers[Member] = Group
         self.elements = {}
         self.verbose = verbose
         self.resonant = []
@@ -146,29 +159,6 @@ class fdmnes(object):
         self.Exp = {}
         self.P = Parameters()
         self.Jobs = []
-        
-        ### LOAD STRUCTURE #################################################
-        if str(structure).isdigit():
-            self.sg_num = int(structure)
-            self.a, self.b, self.c, \
-            self.alpha, self.beta, self.gamma = 1, 1, 1, 90, 90, 90
-            self.cif = False
-        elif isinstance(structure, (tuple, list, np.ndarray)):
-            structure = np.ravel(structure).astype(float)
-            self.a, self.b, self.c, \
-            self.alpha, self.beta, self.gamma = structure
-            self.cif = False
-        elif os.path.isfile(structure):
-             end = os.path.splitext(structure)[1].lower()
-             if end == ".cif":
-                 self.load_cif(structure, resonant)
-                 self.cif = True
-             elif end == ".txt":
-                 self.Filein(structure)
-        else:
-            raise ValueError(
-                "Invalid input for structure (file not found): %s"\
-                %str(structure))
         
         ### FIND FDMNES ####################################################
         if fdmnes_path==None:
@@ -197,8 +187,39 @@ class fdmnes(object):
                         Further, the files xsect.dat and spacegroup.txt are
                         required in the same folder.
                     """%(fname, self.fdmnes_dir, conffile))
+        with open(fpath, "r") as fh:
+            sgcont = filter(lambda s: s.startswith("*"), fh.readlines())
+            sgcont = map(str.strip, sgcont)
+            sgcont = map(lambda s: s.strip("*"), sgcont)
+            sgcont = map(lambda s: s.split()[:3], sgcont)
+            self.spacegroups = np.vstack(sgcont).astype(str)
+        
+        ### LOAD STRUCTURE #################################################
+        if structure in self.spacegroups:
+            self.sg = structure
+            self.a, self.b, self.c, \
+            self.alpha, self.beta, self.gamma = 1, 1, 1, 90, 90, 90
+            self.cif = False
+        elif isinstance(structure, (tuple, list, np.ndarray)):
+            structure = np.ravel(structure).astype(float)
+            self.a, self.b, self.c, \
+            self.alpha, self.beta, self.gamma = structure
+            self.cif = False
+        elif os.path.isfile(structure):
+             end = os.path.splitext(structure)[1].lower()
+             if end == ".cif":
+                 self.load_cif(structure, resonant)
+                 self.cif = True
+             elif end == ".txt":
+                 self.LoadInputFile(structure)
+        else:
+            raise ValueError(
+                "Invalid input for structure (file not found): %s"\
+                %str(structure))
+        
+        
     
-    def add_atom(self, label, position, resonant=False):
+    def add_atom(self, label, position, resonant=False, occupancy=1.):
         """
             Method to give parameters for the FDMNES calculation.
             
@@ -213,6 +234,9 @@ class fdmnes(object):
                 resonant : bool
                     Specifies whether this atom is taking part in resonant
                     scattering / absorption.
+                occupancy : float
+                    Determines the probability of this site to be occupied
+                    by the atom.
         """
         if type(label) is not str:
             raise TypeError("Invalid label. Need string.")
@@ -234,6 +258,7 @@ class fdmnes(object):
                              "Chemical element not found in %s"%label)
         self.Z[label] = elements.Z[self.elements[label]]
         self.positions[label] = position
+        self.occupancy[label] = occupancy
         if resonant:
             if self.P.has_key("Absorber"):
                 self.P.Absorber += (len(self.positions),)
@@ -279,14 +304,29 @@ class fdmnes(object):
         self.P.Z_absorber = 0
         
         if cb.has_key("_symmetry_int_tables_number"):
-            self.sg_num = mkfloat(cb["_symmetry_int_tables_number"])
+            sg_num = int(cb["_symmetry_int_tables_number"])
+            self.sg_num = str(sg_num)
         
         if cb.has_key("_symmetry_space_group_name_h-m"):
             self.sg_name = cb["_symmetry_space_group_name_h-m"]
-            self.sg_name = self.sg_name.replace(" ", "")
+            self.sg_name = "".join(self.sg_name.split())
             i = self.sg_name.find(":")
             if i>=0:
-                self.cscode = self.sg_name[i:]
+                self.sg_num += self.sg_name[i:]
+                self.sg_name += self.sg_name[i:]
+        
+        if not hasattr(self, "sg_num") and not hasattr(self, "sg_name"):
+            raise IOError("No space group found in .cif file:%s%s"\
+                          %os.linesep, path)
+        
+        if hasattr(self, "sg_num") and \
+            self.check_sg(self, self.sg_num, raiseError=False):
+            self.sg = self.sg_num
+        elif hasattr(self, "sg_name") and \
+             self.check_sg(self, self.sg_name, raiseError=True):
+            self.sg = self.sg_name
+        else:
+            raise ValueError("No valid space group given in .cif file.")
         
         self.a = mkfloat(cb["_cell_length_a"])
         self.b = mkfloat(cb["_cell_length_b"])
@@ -306,21 +346,29 @@ class fdmnes(object):
             px = mkfloat(line._atom_site_fract_x)
             py = mkfloat(line._atom_site_fract_y)
             pz = mkfloat(line._atom_site_fract_z)
+            occ = mkfloat(line._atom_site_occupancy)
             position = (px, py, pz)
-            self.add_atom(label, position, (label in self.resonant))
+            self.add_atom(label, position, (label in self.resonant), occ)
             if symbol == resonant:
                 self.P.Z_absorber = elements.Z[symbol]
         
     
-    def check_parameters(self, keyw):
+    def check_parameters(self, keyw, Group=None):
         """
             Checks configured FDMNES parameters for consistency.
         """
         if not self.P.has_key(keyw):
             return True
-        if keyw=="Atom" and len(self.P.Atom):
+        else:
+            value = self.P[keyw]
+        if Group!=None:
+            deftype = type(Group[keyw])
+            assert isinstance(self.P[keyw], deftype),\
+                "Wrong type: Parameter %s has to be of type %s"\
+                %(keyw, deftype)
+        if keyw=="Atom" and len(value):
             numspecies = len(np.unique(self.elements.values()))
-            numconf = len(self.P.Atom)
+            numconf = len(value)
             if not numconf == numspecies:
                 raise ConsistencyError(errmsg="Number of given electron "
                     "configurations (%i) does not match number of different "
@@ -329,10 +377,38 @@ class fdmnes(object):
                 raise ConsistencyError(errmsg="Electronic configuration"
                     "given twice: Parameters Atom and Atom_conf")
         return True
-
+    
+    def _check_sg(self, sg, raiseError=True):
+        sg = str(sg)
+        if sg in self.spacegroups:
+            return True
+        else:
+            message = ""
+            for group in self.spacegroups:
+                groupstr = ", ".join(group)
+                if sg in groupstr:
+                    message += groupstr + os.linesep
+            if message:
+                message = "Did you mean one of the following groups?:%s%s"\
+                          %(os.linesep, message)
+            errmsg="""
+            The given Space group ``%s'' was not found in the database.
+            
+            Please enter the full number of the space group that you desire.
+            See the International Tables or the attribute ``spacegroups''
+            for more details.
+            
+            %s
+            """%(sg, message)
+            if raiseError:
+                raise ConsistencyError(errmsg = errmsg)
+            else:
+                print errmsg
+                return False
+    
     def _skip_group(self, Group, TestGroup="all"):
         if TestGroup=="all":
-            TestGroup = ["SCF", "Convolution", "Extract", "Reflection"]
+            TestGroup = ["SCF", "Convolution", "Extract", "RXS"]
         for Name in TestGroup:
             if Group.has_key(Name):
                 if not hasattr(self.P, Name) or not self.P[Name]:
@@ -345,13 +421,11 @@ class fdmnes(object):
             of lines.
         """
         output = []
-        if hasattr(self,"sg_num"):    
-            sg = "Spgroup%s%i"%(os.linesep, self.sg_num)
-        if hasattr(self,"cscode"):
-            sg += os.linesep + self.cscode
-        
-        output.append(sg)
-        output.append("")
+        if hasattr(self, "sg"):
+            self._check_sg(self.sg)
+            output.append("Spgroup")
+            output.append(self.sg)
+            output.append("")
         
         if any(map(lambda x: x<1, self.occupancy.values())):
             suffix = "_t"
@@ -365,9 +439,9 @@ class fdmnes(object):
         cell = (self.a, self.b, self.c, self.alpha, self.beta, self.gamma)
         output.append("  %g %g %g %g %g %g" %cell)
         
-        self.check_parameters("Atom")
+        self.check_parameters("Atom", settings.Defaults.Basic)
         for label in self.positions.iterkeys():
-            if len(self.P.Atom):
+            if hasattr(self.P, "Atom") and len(self.P.Atom):
                 atomnum = self.P.Atom.index(self.Z[label]) + 1
             else:
                 atomnum = self.Z[label]
@@ -383,11 +457,11 @@ class fdmnes(object):
         
         return output
     
-    def FileOut(self, path, overwrite=False):
+    def WriteInputFile(self, path, overwrite=False):
         """ 
             Method writes an input file for the FDMNES calculation.
             The calculation parameters, for example Range and Radius etc., 
-            are taken from the fdmnes.P NamedTuple. 
+            are taken from the ``P'' object. 
          
             Input:
             ------
@@ -426,11 +500,7 @@ class fdmnes(object):
                 continue
             for keyw in Group.iterkeys():
                 if self.P.has_key(keyw) and self.P[keyw]!=Group[keyw]:
-                    deftype = type(Group[keyw])
-                    assert isinstance(self.P[keyw], deftype),\
-                        "Wrong type: Parameter %s has to be of type %s"\
-                            %(keyw, deftype)
-                    self.check_parameters(keyw) # t.b.w.
+                    self.check_parameters(keyw, Group)
                     print("-> %s"%keyw)
                     value = param2str(self.P[keyw])
                     output.append(keyw)
@@ -451,7 +521,7 @@ class fdmnes(object):
         """
         assert hasattr(self, "path"), \
             "Attribute `path` has not been defined. "\
-            "Run fdmnes.FileOut() first."
+            "Run method WriteInputFile() first."
         self.Jobs.append(self.path)
         
     
@@ -466,7 +536,7 @@ class fdmnes(object):
         if jobs=="last":
             assert hasattr(self, "path"), \
                 "Attribute `path` has not been defined. "\
-                "Run fdmnes.FileOut() first."
+                "Run method self.WriteInputFile() first."
             jobs = [self.path]
         if len(jobs)==0:
             print("Warning: No jobs to process!")
@@ -478,7 +548,7 @@ class fdmnes(object):
         
         output = []
         Run_File = 1
-        output.append("%i"%(len(jobs)+1))
+        output.append("%i"%len(jobs))
         output.append("")
         output.extend(jobs)
         
@@ -499,7 +569,10 @@ class fdmnes(object):
                                                       #stderr = errfile)
             if wait:
                 self.proc.wait()
-            print("FDMNES simulation finished.")
+                print("FDMNES simulation finished.")
+            else:
+                print("FDMNES process started in background.")
+                print("See the ``Status'' method for details.")
         except Exception as e:
             print("An error occured when running FDMNES executable at")
             print(self.fdmnes_exe)
@@ -525,13 +598,14 @@ class fdmnes(object):
             k = len(self.Jobs)
             for i in range(k):
                 path = self.Jobs[i]
+                basepath = os.path.splitext(path)[0]
                 if "_inp" in path:
                     path_out = basepath.replace("_inp","_out")
                 else:
                     path_out = basepath + "_out"
                 bavfile = path_out + "_bav.txt"
                 if os.path.exists(self.bavfile):
-                    with open(self.bavfile) as bf:
+                    with open(self.bavfile, "r") as bf:
                         bf.seek(-60, 2)
                         tail = map(str.strip, bf.readlines())
                     if tail[-1]=='Have a beautiful day !':
@@ -550,131 +624,121 @@ class fdmnes(object):
             return result
         
         
-    def FileIn(self, fname):
+    def LoadInputFile(self, fpath):
         """
             Method to read an existing input file.
 
             Input:
             ------
-                fname: string
+                fpath: string
                     Path to the input file.
         """
-        fobject = open(fname, "r")
-        content = fobject.read()
-        fobject.close()
+        with open(fpath, "r") as fh:
+            content = fh.readlines()
         
-        content_red = map(string.strip,content.splitlines())
-        content_red = filter(lambda x: x is not "", content_red)
+        content = filter(lambda s: not s.startswith("!"), content)
+        content = map(lambda s: s.split("!")[0], content)
+        content = map(str.strip, content)
+        content = filter(lambda s: bool(s.strip()), content)
         
-        keywords = ["SCF", "SCF_exc", "SCF_mag_free","Memory_save",
-                    "Density"]
-        keywords_float = ["Radius", "Efermie", "Estart","Rpotmax",
-                          "N_self","P_self","R_self", "Delta_E_conv","Hubbard"]
-        keywords_string = ["Absorber","Edge","Range"]
-                
-        self.path_out = os.path.splitext(fname)[0].replace("_inp","_out")
-        self.bavfile = self.path_out + "_bav.txt"
-
-       # if "Range" in content_red:
-           #     self.Range = content_red[content_red.index("Range")+1]
-                
-        for line in content_red:
-            if line in flags + Multi_Exp_flags + keywords:
-                 setattr(self, line, True)
-            
-            if line in keywords_float:
-                setattr(self, line, float(content_red[content_red.index(line)+1]))
-                
-            if line in keywords_string:
-                setattr(self, line, str(content_red[content_red.index(line)+1]))
-                
-            if line == "Spgroup":
-                line = content_red[content_red.index(line)+1]
-                if ":" in line:
-                    line.split(':')
-                    self.sg_num = int(line[0])
-                    self.cscode = ":" + line[1]
-                else:
-                    self.sg_num = int(line)
-                
-            if line == "Atom":
-                Atom = []
-                linenum = content_red.index(line)
-                atom_num_list = []
-                while True:
-                    try:
-                        linenum += 1
-                        atomline = content_red[linenum]
-                        atomline = atomline.split()
-                        atomline = map(float, atomline)
-                        atom_num = int(atomline[0])
-                        atom_num_list.append(atom_num)
-                        anzahl = atom_num_list.count(atom_num)
-                        symbol = elements.symbols[atom_num] + str(anzahl)
-                        atm_conf = atomline[1:]
-                        Atom.append((symbol,atm_conf))
-                    except ValueError:
-                        break
-                self.Atom = dict(Atom)
-               # while :
-                # self.atm_conf = content_red[content_red.index(line)+1]
-                
-            if line in ["Crystal", "Molecule"]:
-                if line=="Crystal":
-                    self.crystal=True
-                linenum = content_red.index(line)+1
-                cellline = content_red[linenum]
-                cellline = cellline.split()
-                cellline = map(float, cellline)
-                self.a, self.b, self.c, self.alpha, self.beta, self.gamma = cellline
-                positions = []
-                while True:
-                    try:
-                        linenum += 1
-                        atomline = content_red[linenum]
-                        atomline = atomline.split()
-                        atomline = map(float, atomline)
-                        num = int(atomline[0])
-                        position = atomline[1:4]
-                        #position = array2str(position)
-                        positions.append((num, position))
-                    except ValueError:
-                        break
-                #self.pos = array2str(positions)
-        if "Atom" in content_red :
-            pass
-        else:
-            self.pos = positions
-            self.atm_num = num
         
-        self.positions = {}
-        self.Z = {}
-        for atom in positions:
-            num = atom[0]
-            position = atom[1:]
-            symbols = []
-            if "Atom" in content_red:
-                symbol = Atom[num-1][0]
-                self.Z[symbol] = elements.Z[symbol[:-1]]
+        NewParam = dict()
+        keyw = None
+        while content:
+            line = content.pop(0)
+            lline = line.lower()
+            if lline == "filout":
+                self.path_out = content.pop(0)
+                self.bavfile = self.path_out + "_bav.txt"
+            elif lline == "spgroup":
+                self.sg = content.pop(0)
+            elif lline.startswith("crystal") or lline.startswith("molecule"):
+                keyw = lline.capitalize()
+                NewParam[keyw] = []
+            elif lline=="end":
+                break
             else:
-                symbol = elements.symbols[num]
-                self.Z[symbol] = elements.Z[symbol]
-                symbols.append(symbol)
-                anzahl = symbols.count(symbol)
-                symbol += str(anzahl)
-
-            self.positions[symbol] = position
-      #  self.Atom = dict(Atom)
-             #   self.pos = positions
-             #   return self.pos
+                nextkeyw = keyword_exists(line)
+                if nextkeyw:
+                    keyw = nextkeyw
+                    NewParam[keyw] = []
+                elif keyw!=None:
+                    NewParam[keyw].append(line)
+        
+        structure_keyw = ["Crystal", "Crystal_t", "Crystal_p",
+                          "Molecule", "Molecule_t"]
+        found_structure = map(NewParam.has_key, structure_keyw)
+        if sum(found_structure) > 1:
+            raise ConsistencyError(
+                "Several structure definitions found in input-file. "\
+                "Structure can be specified in input-file by the "\
+                "keywords Crystal or Molecule, not both!")
+        elif sum(found_structure) == 1:
+            ind = found_structure.index(True)
+            structure = NewParam.pop(structure_keyw[ind])
+            self.cif = False
+            self.crystal = bool(ind < 3)
+        elif not any(found_structure):
+            raise IOError("No structure has been defined in input-file")
             
-       #         self.Crysatal = line
-        #        self.cell = content_red[content_red.index(line)+1]
-         #       while 
-                
-                                  
-        #return content_red
+        self.LoadedParam = NewParam
 
+        if all(map(NewParam.has_key, ["Atom", "Atom_conf"])):
+            raise ConsistencyError(
+                "Only one of the keywords ``Atom'' and "\
+                "``Atom_conf'' may be given in the input file!")
+            
+        for keyw in NewParam.iterkeys():
+            if not len(NewParam[keyw]):
+                self.P[keyw] = True
+                continue
+            Values = NewParam[keyw]
+            GroupName = self.GroupMembers[keyw]
+            Group = getattr(self.Defaults, GroupName)
+            Type = type(Group[keyw])
+            for j in range(len(Values)):
+                Value = Values[j]
+                Value = Value.split() if Type in [list, tuple] else [Value]
+                for i in range(len(Value)):
+                    try:
+                        Value[i] = int(Value[i])
+                    except:
+                        pass
+                    try:
+                        Value[i] = float(Value[i])
+                    except:
+                        pass
+                if len(Value) > 1:
+                    Value = tuple(Value)
+                else:
+                    Value = Value[0]
+                Values[j] = Value
+            if Type is not list:
+                assert len(Values) == 1, "Many lines of input given for "\
+                    "Parameter %s. Only one line of input accepted!"%keyw
+                Values = Type(Values[0])
+            self.P[keyw] = Values
+            
+        if not ind == 2:
+            cell = map(float, structure.pop(0).split())
+            self.a, self.b, self.c, self.alpha, self.beta, self.gamma = cell
+            if self.P.has_key("Atom"):
+                Z = lambda i: self.P.Atom[i][0]
+            else:
+                Z = lambda i: i
+            
+            for Atom in structure:
+                Atom = Atom.split()
+                symbol = elements.symbols[Z(int(Atom[0]))]
+                num = self.elements.values().count(symbol) + 1
+                label = symbol + str(num)
+                position = tuple(map(float, Atom[1:4]))
+                occ = float(Atom[4]) if (len(Atom)>4) else 1
+                self.add_atom(label, position, occupancy = occ)
+            
+            
+            
+        
     def get_XANES(self, conv = True):
         """
             Method to read-out the calculated XANES datas of the output file 
@@ -790,7 +854,7 @@ class fdmnes(object):
     def do_convolution(self, path = None):
         """
             Method to write a special convolution file. It is also possible to 
-            define the convolution parameters in the FileOut method.
+            define the convolution parameters in the WriteInputFile method.
             
             Input:
             ------
