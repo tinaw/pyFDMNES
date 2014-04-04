@@ -77,7 +77,6 @@ Defaults.Spin["Spinorbite"] = False
 Defaults.Convolution["Calculation"] = []
 Defaults.Convolution["Check_conv"] = False
 Defaults.Convolution["Convolution"] = False
-Defaults.Convolution["Conv_out"] = ""
 Defaults.Convolution["Dec"] = False
 Defaults.Convolution["Ecent"] = 30. 
 Defaults.Convolution["Efermi"] = -5. 
@@ -101,24 +100,27 @@ Defaults.Convolution["Selec_core"] = -1
 Defaults.Convolution["Thomson"] = nan
 Defaults.Convolution["Xan_atom"] = False
 
-# To be considered later:
 Defaults.Extract["Extract"] = ""
 Defaults.Extract["Extractpos"] = []
 Defaults.Extract["Extractsym"] = []
 Defaults.Extract["Rotsup"] = []
-
 
 Defaults.Experiment["Gen_shift"] = [0.,0.,0]
 Defaults.Experiment["Emin"] = nan
 Defaults.Experiment["Emax"] = nan
 Defaults.Experiment["Kev"] = False
 
+
+
+# mostly french dictionary
 synonyms = dict()
 synonyms["dafs"] = "RXS"
 synonyms["ecrantage"] = "Screening"
 synonyms["gamme"] = "Range"
 synonyms["rayon"] = "Radius"
 synonyms["seuil"] = "Edge"
+synonyms["self_absorption"] = "Self_abs"
+synonyms["gamma_fix"] = "Gamma_var"
 
 
 
