@@ -565,6 +565,7 @@ class fdmnes(object):
         self.bavfile = self.path_out + "_bav.txt"
         
         if not conv:
+            self.P.Calculation = []
             output.extend(self.write_structure())
         
         for Group in settings.Defaults:
@@ -584,6 +585,7 @@ class fdmnes(object):
             if keyw in output:
                 ind = output.index(keyw)
                 output.insert(ind, "")
+        output.append("")
         output.append("End")
         with open(path, "w") as f:
             f.writelines(os.linesep.join(output))
