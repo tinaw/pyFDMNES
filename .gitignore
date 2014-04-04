@@ -7,5 +7,7 @@
 trash/
 *.pyc
 *~
-examples/
+examples/*/*.txt
+examples/*/*.log
+examples/von\ Melanie/
 config.ini
