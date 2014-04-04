@@ -245,7 +245,7 @@ class fdmnes(object):
             raise TypeError("Invalid label. Need string.")
         if len(position) is not 3:
             raise TypeError("Enter 3D position object!")
-        
+            
         position = np.array(position)
         #label = label.replace("_", "")
         SymList = elements.Z.keys()
@@ -425,10 +425,11 @@ class fdmnes(object):
         
         Param = dict()
         keyw = None
+        sg = None
         while content:
             line = content.pop(0)
             lline = line.lower()
-            if lline == "filout":
+            if lline == "filout" or lline=="conv_out":
                 path_out = content.pop(0)
                 #bavfile = path_out + "_bav.txt"
             elif lline == "spgroup":
@@ -469,12 +470,11 @@ class fdmnes(object):
         if TestGroup=="all":
             TestGroup = ["SCF", "Convolution", "Extract", "RXS"]
         for Name in TestGroup:
-            if Group.has_key(Name):
-                if not hasattr(self.P, Name) or not self.P[Name]:
+            if hasattr(self.P, Name) and self.P[Name]:
+                if Name in ["Convolution", "Extract"] and \
+                   not Group.has_key(Name):
                     return True
-            elif TestGroup=="Convolution" and self.P.Convolution:
-                return True
-            elif TestGroup=="Extract" and self.P.Extract:
+            elif Group.has_key(Name):
                 return True
         return False
     
@@ -543,7 +543,7 @@ class fdmnes(object):
         basepath, ext = os.path.splitext(path)
         dirname, basename = os.path.split(basepath)
         
-        conv = self.P.has_key("Convolution") and self.P.Convolution:
+        conv = self.P.has_key("Convolution") and self.P.Convolution
         if conv and not "_conv" in path:
             suffix = "_out_conv"
         else:
@@ -552,10 +552,10 @@ class fdmnes(object):
             base_out = basename.replace("_inp", suffix)
         else:
             base_out = basename + suffix
-        self.path_out = os.path.join(dirname, basename)
+        self.path_out = os.path.join(dirname, base_out)
         
-        output = ["Filout"] if conv else ["Conv_out"]
-        output.append(self.path_out)
+        output = ["Filout"] if not conv else ["Conv_out"]
+        output.append(self.path_out + ".txt"*conv)
         output.append("")
         
         output.append("Folder_dat")
@@ -564,7 +564,8 @@ class fdmnes(object):
         
         self.bavfile = self.path_out + "_bav.txt"
         
-        output.extend(self.write_structure())
+        if not conv:
+            output.extend(self.write_structure())
         
         for Group in settings.Defaults:
             if self._skip_group(Group):
@@ -597,7 +598,7 @@ class fdmnes(object):
         self.Jobs.append(self.path)
         
     
-    def Run(self, jobs="last", wait=False, logpath = "fdmnes.log"):
+    def Run(self, jobs="last", wait=False, logpath = None):
         """
             Method to write the ``fdmfile.txt'' and, subsequently, to start
             the FDMNES simulation.
@@ -605,7 +606,7 @@ class fdmnes(object):
             the additional argument ``jobs'' one can define a list of jobs
             (= paths to input files) that will be processed.
         """
-        assert not self.Status(),\
+        assert not self.Status(verbose=False),\
             "FDMNES process already running. See ``Status'' method."
         
         if jobs=="last":
@@ -630,6 +631,11 @@ class fdmnes(object):
         with open(fdmfile, "w") as f:
             f.writelines(os.linesep.join(output))
         
+        if logpath==None:
+            flist = os.listdir(os.curdir)
+            flist = filter(lambda s: (s[:6] + s[-4:])=="fdmnes.log", flist)
+            lognum = len(flist)
+            logpath = "fdmnes.%i.log"%lognum
         
         logfile = open(logpath, "w")
         #errfile = open(os.path.join(self.workdir, "fdmnes_error.txt", "w"))
@@ -654,11 +660,11 @@ class fdmnes(object):
         finally:
             logfile.close()
         
-    def Status(self, full_output=False):
+    def Status(self, full_output=False, verbose=True):
         """ 
             Method to check the status of running simulations.
             
-            5Returns:
+            Returns:
                 True, if a process is running
                 False, if no process is running
         """
@@ -704,7 +710,8 @@ class fdmnes(object):
         if full_output:
             return result, message
         else:
-            print os.linesep.join(message)
+            if verbose:
+                print(os.linesep.join(message))
             return result
         
         
@@ -726,7 +733,9 @@ class fdmnes(object):
         self.ParamIn = ParamIn
         
         self.path_out = ParamIn["path_out"]
-        self.sg = ParamIn["sg"]
+        
+        if ParamIn["sg"]!=None:
+            self.sg = ParamIn["sg"]
         structure = ParamIn["structure"]
         ParamIn = ParamIn["Param"]
         self.bavfile = self.path_out + "_bav.txt"
@@ -734,7 +743,7 @@ class fdmnes(object):
         if structure and structure.keys()[0].startswith("Crystal"):
             self.Crystal = True
 
-        if all(map(NewParam.has_key, ["Atom", "Atom_conf"])):
+        if all(map(ParamIn.has_key, ["Atom", "Atom_conf"])):
             raise ConsistencyError(
                 "Only one of the keywords ``Atom'' and "\
                 "``Atom_conf'' may be given in the input file!")
@@ -788,7 +797,7 @@ class fdmnes(object):
             
         
     
-    def DoConvolution(self, path = None):
+    def DoConvolution(self, path = None, overwrite=False):
         """
             Method to write a special convolution file. It is also possible to
             define the convolution parameters in the WriteInputFile method.
@@ -811,10 +820,10 @@ class fdmnes(object):
                 "Check P.Calculation list or Run() Simulation in advance .")
         
         if path == None and not "_conv" in os.path.basename(self.path):
-            path = "_conv.".join(os.path.splitext(self.path))
+            path = "_conv".join(os.path.splitext(self.path))
         
         
-        self.WriteInputFile(path)
+        self.WriteInputFile(path, overwrite)
         self.P.Convolution = False
     
     
@@ -829,14 +838,10 @@ class fdmnes(object):
                     If the calculation with or without convolution is wanted.
             
         """
-        if conv == True:
-            fname = self.path_out + "_conv.txt" 
-            skiprows = 1
-        else:
-            fname = self.path_out + ".txt"
-            skiprows = 4
+        fpath = self.path_out + ".txt"
+        skiprows = 1 + conv
         
-        data = np.loadtxt(fname, skiprows = skiprows)
+        data = np.loadtxt(fpath, skiprows = skiprows)
         return data
         
         

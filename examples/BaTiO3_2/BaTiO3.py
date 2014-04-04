@@ -6,8 +6,6 @@ Created on Thu Aug 22 15:03:25 2013
 """
 import os
 import sys
-#sys.path.append("../../")
-
 import numpy as np
 import fdmnes
 import matplotlib.pyplot as plt
