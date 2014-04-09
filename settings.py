@@ -2,16 +2,19 @@ from collections import namedtuple
 
 nan = float("nan")
 
-ParamTypes = namedtuple("ParamTypes", ("Basic", 
-                                       "SCF", 
-                                       "Multipole",
-                                       "RXS",
-                                       "Spin",
-                                       "Convolution", 
-                                       "Extract", 
-                                       "Experiment"))
+Groups = ["Basic", 
+          "SCF", 
+          "Multipole",
+          "RXS",
+          "Spin",
+          "Convolution", 
+          "Extract", 
+          "Experiment"]
 
-Defaults = ParamTypes({}, {}, {}, {}, {}, {}, {}, {})
+
+ParamTypes = namedtuple("ParamTypes", Groups)
+
+Defaults = ParamTypes(*[{} for i in range(len(Groups))])
 
 Defaults.SCF['Delta_E_conv'] = 1.
 Defaults.SCF['N_self'] = 30
@@ -122,6 +125,10 @@ synonyms["seuil"] = "Edge"
 synonyms["self_absorption"] = "Self_abs"
 synonyms["gamma_fix"] = "Gamma_var"
 
+GroupMembers = dict()
+for Group in Groups:
+    for Member in getattr(Defaults, Group):
+        GroupMembers[Member] = Group
 
 
 

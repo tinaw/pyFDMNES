@@ -10,5 +10,9 @@ trash/
 examples/*/*.txt
 examples/*/*.log
 examples/*/*.bak
+examples/*/*/*.txt
+examples/*/*/*.log
+examples/*/*/*.bak
+examples/*/fort*
 examples/von\ Melanie/
 config.ini

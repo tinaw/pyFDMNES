@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 
 sim = fdmnes.fdmnes("BaTiO3.cif")
 
+sim.P.Range = (-15, 0.5, 50)
 sim.P.radius = 2.0
 sim.P.Rpotmax = 8.50
 sim.P.Green = True
@@ -34,7 +35,7 @@ sim.DoConvolution(overwrite=True)
 
 sim.Run(wait=True)
 sim.Status()
-data = sim.get_XANES()
+data = sim.get_XANES(conv=True)
 plt.plot (data[:,0], data[:,1], label="No Green convoluted")
 
 plt.title("XANES with Convolution")
