@@ -31,7 +31,7 @@ else:
         print("see install.txt for installation instructions.")
     
     distutils.core.setup( name = "fdmnes", 
-       version = "0.1",
+       version = "0.2",
        packages = ["fdmnes"],
        package_data={'fdmnes':['config.ini']},
        author = "Carsten Richter",

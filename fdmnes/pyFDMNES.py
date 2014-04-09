@@ -90,6 +90,17 @@ class ConsistencyError(Exception):
         return self.value + os.linesep + "Message: %s" %self.errmsg
 
 
+def get_polarization(pol):
+    options = ["sigma", "pi", "right", "left"]
+    try:
+        pol = float(pol)
+        pol = (5, pol)
+    except:
+        if pol in options:
+            pol = options.index(pol) + 1
+        else:
+            pol = None
+    return pol
 
 
 class Parameters(dict):
@@ -554,7 +565,7 @@ class fdmnes(object):
         
         return output
     
-    def WriteInputFile(self, path, overwrite=False):
+    def WriteInputFile(self, path, overwrite=False, update=True):
         """ 
             Method writes an input file for the FDMNES calculation.
             The calculation parameters, for example Range and Radius etc., 
@@ -578,16 +589,19 @@ class fdmnes(object):
         convonly = bool(conv and len(self.P.Calculation))
         
         basename = basename.replace("_conv", "")
-        suffix = "_out_conv" if conv else "_out"
+        suffix = "_out_conv" if convonly else "_out"
         if "_inp" in basename:
             base_out = basename.replace("_inp", suffix)
         else:
             base_out = basename + suffix
-        self.path_out = os.path.join(dirname, base_out)
+        
+        path_out = os.path.join(dirname, base_out)
+        if update:
+            self.path_out = path_out
         
         
         output = ["Filout"] if not convonly else ["Conv_out"]
-        output.append(self.path_out + ".txt"*convonly)
+        output.append(path_out + ".txt"*convonly)
         output.append("")
         
         output.append("Folder_dat")
@@ -597,7 +611,7 @@ class fdmnes(object):
         if self.P.Extract:
             self.bavfile = self.P.Extract
         else:
-            self.bavfile = self.path_out + "_bav.txt"
+            self.bavfile = path_out + "_bav.txt"
         
         if not convonly:
             self.P.Calculation = []
@@ -624,7 +638,7 @@ class fdmnes(object):
         output.append("End")
         if convonly:
             self.path_conv = path
-        else:
+        elif update:
             self.path = path
         with open(path, "w") as f:
             f.writelines(os.linesep.join(output))
@@ -673,13 +687,15 @@ class fdmnes(object):
         output.append("")
         output.extend(jobs)
         
+        print("Processing: %s"%(" ".join(jobs)))
         with open(fdmfile, "w") as f:
             f.writelines(os.linesep.join(output))
         
         if logpath==None:
             flist = os.listdir(os.curdir)
             flist = filter(lambda s: (s[:6] + s[-4:])=="fdmnes.log", flist)
-            flist = map(lambda s: int(s[7:-4]) if s.isdigit() else 0, flist)
+            flist = map(lambda s: s[7:-4], flist)
+            flist = map(lambda s: int(s) if s.isdigit() else -1, flist)
             lognum = (sorted(flist)[-1]+1) if len(flist) else 0
             self.logpath = logpath = "fdmnes.%i.log"%lognum
         
@@ -927,7 +943,6 @@ class fdmnes(object):
                 fpath = fpath.replace("_conv", "")
         if not self.Status(verbose=False)==2:
             self.Run(wait=True)
-        skiprows = 2 - conv # not good yet
         
         if not isinstance(fpath, list):
             fpath = [fpath]
@@ -951,7 +966,8 @@ class fdmnes(object):
         return np.vstack((output)).T
         
         
-    def get_dafs(self, miller, pol_in, pol_out, azimuth, conv = True):
+    def get_DAFS(self, miller, pol_in, pol_out, azimuth, conv = True,
+                 fpath=None):
         """
         
             Method to read-out the calculated DAFS datas. It's possible to get
@@ -985,79 +1001,84 @@ class fdmnes(object):
             and len(miller)==3,\
             "Wrong input for ``miller''- (reflection-) indices. "\
             "A 3-tuple of type int is required."
+        miller = tuple(miller)
+        
+        conv = bool(conv)
+        
+        self.P.Extract = self.bavfile
+        wasconv = self.P.Convolution
+        self.P.Convolution = conv
+        
+        pol_in = get_polarization(pol_in)
+        if pol_in == None:
+            raise ValueError("Invalid input for pol_in")
+        pol_out = get_polarization(pol_out)
+        if pol_out == None:
+            raise ValueError("Invalid input for pol_out")
+        
+        angles = [0,90] # what to do with left and right?
+        if isinstance(pol_in, tuple) and not isinstance(pol_out, tuple):
+            pol_out = (pol_out, angles[pol_out-1])
+        if not isinstance(pol_in, tuple) and isinstance(pol_out, tuple):
+            pol_in = (pol_in, angles[pol_in-1])
         
         
-        fpath = self.path_out + ".txt"
+        azimuth = float(azimuth)
+        
+        self.P.RXS = [miller + (pol_in, pol_out, azimuth)]
+        path = "_rxs".join(os.path.splitext(self.path))
+        self.WriteInputFile(path, overwrite=True, update=False)
+        
+        self.Run(path)
+        self.Extract = False
+        self.P.Convolution = wasconv
         
         
         
-        
-        
-        if conv == True:
-            fname = os.path.abspath(self.path_out) + "_conv.txt"  
-            skiprows = 1  
-            a = 0
-        
-        else:
-            fname = os.path.abspath(self.path_out) + ".txt"
-            skiprows = 4
-            a = 3
-        
-        fobject = open(fname,"r")
-        lines = fobject.readlines()
-        fobject.close()
-        headline = lines[a]
-        headline_keywords = headline.split()
-            
-        Reflex_a = np.array(Reflex)
-        if np.ndim(self.Reflex)>1:
-            columns = (self.Reflex[:,0:3] == Reflex).all(1)
-        
-            if pol_in != None:
-                col_pol_in = (self.Reflex[:,3] == pol_in)
-                columns *= col_pol_in
-            if pol_out != None:
-                col_pol_out = (self.Reflex[:,4] == pol_out)
-                columns *= col_pol_out
-            if azimuth != None:
-                col_azimuth = (self.Reflex[:,5].round(0) == np.round(azimuth))
-                columns *= col_azimuth
-                
-        else:
-            columns = (self.Reflex[0:3] == Reflex).all(0)
-            
-            col_pol_in = (self.Reflex[3] == pol_in)
-            columns *= col_pol_in
-            
-            col_pol_out = (self.Reflex[4] == pol_out)
-            columns *= col_pol_out
-            
-            col_azimuth = (self.Reflex[5].round(0) == np.round(azimuth))
-            columns *= col_azimuth
-            
-        columns_a = np.where(columns)[0]
-        
-        if len(columns_a) == 0:
-            Reflex_new = np.append(Reflex_a, np.array([pol_out, pol_in, azimuth]))
-            self.Reflex = Reflex_new
-            return self.Reflex
-
-        else:
-            if conv == True:
-                self.column = columns_a+2
-                self.index = headline_keywords[self.column]
+        if fpath==None and self.Status(verbose=False)==2:
+            if conv:
+                fpath = self.path_out + "_rxs_conv.txt"
             else:
-                column = (2*columns_a+2)
-                index = headline_keywords[column]
-                index_a = index.replace("r","I")
-                self.index = index_a+" without convolution"
-                
-                self.column_real = column
-                self.index_real = headline_keywords[self.column_real]
-                
-                self.column_im = column + 1
-                self.index_im = headline_keywords[self.column_im]
-
-            
-        dafs = np.loadtxt(fname, skiprows = skiprows)
-        return dafs
+                num_absorb = self.bavinfo["num_absorber"]
+                if num_absorb > 1:
+                    calclist = ["_%.i"%(i+1) for i in range(num_absorb)]
+                else:
+                    calclist = [""]
+                fpath = map(lambda s: self.path_out + "_rxs" + s + ".txt", 
+                            calclist)
+        if not isinstance(fpath, (list, tuple)):
+            fpath = [fpath]
+        self.path_rxs = fpath
+        foundCalc = map(os.path.isfile, fpath)
+        if not len(foundCalc) or not all(foundCalc):      
+            raise ValueError(
+                "No finished simulation found and no file found as given "\
+                "given by ``fpath''. "\
+                "Maybe try to ``Run()'' simulation in advance.")
+        
+        output = []
+        for fp in fpath:
+            if os.path.isfile(fp):
+                with open(fp, "r") as fh:
+                    content = fh.readlines()
+                content = map(str.strip, content)
+                findEne = map(lambda s: s.startswith("Energy"), content)
+                ind = (findEne.index(True)+1) if any(findEne) else 0
+                header = content[ind-1] if ind>0 else ""
+                header = header.replace("(","").replace(")", "")
+                header = header.split()
+                header.pop(1) # XANES
+                DAFSdata = collections.namedtuple("DAFSdata", header)
+                data = np.loadtxt(fp, skiprows = ind)
+                data = list(data.T)
+                data.pop(1) # XANES
+                DAFS = DAFSdata(*data)
+                output.append(DAFS)
+            else:
+                raise IOError(
+                    "FDMNES output file not found:%s%s"%(os.linesep, fp))
+        
+        
+        
+        
+        return DAFS

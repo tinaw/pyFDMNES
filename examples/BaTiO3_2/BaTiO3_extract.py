@@ -6,6 +6,13 @@ Created on Thu Aug 22 15:03:25 2013
 """
 import fdmnes
 import pylab as pl
+import os
+
+DIR = "output"
+if not os.path.isdir(DIR):
+    os.mkdir(DIR)
+
+os.chdir(DIR) # move to output folder
 
 sim = fdmnes.fdmnes("BaTiO3_py_0.50_inp.txt")
 
