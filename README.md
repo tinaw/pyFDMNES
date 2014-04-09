@@ -8,4 +8,3 @@ Requirements:
     - python 2.7
     - python non-standard modules:
         -> numpy
-        -> CifFile (http://pycifrw.berlios.de/)
