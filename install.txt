@@ -1,0 +1,34 @@
+(This is short. For further information see http://docs.python.org/install/)
+
+Start a command line and change to this directory.
+You can also use an interactive python command line (ipython).
+In this case, the command ``python`` has to be replaced by ``run`` in
+the following.
+
+Then:
+
+1) Compile the program. Use one of the following options:
+    
+    i) by default the multi-core prozessing option is enabled
+    
+        python setup.py build -f
+    
+
+2) If no errors but only warnings have occured copy into packages folder:
+    
+    i) for current user only:
+    
+        python setup.py install --user
+    
+    ii) for all users:
+    
+        python setup.py install
+
+
+    iii) if you want to create an inplace module which only works in
+         the local folder, you can use:
+    
+        python setup.py build_ext -f -i
+
+
+
