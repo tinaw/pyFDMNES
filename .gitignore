@@ -7,6 +7,9 @@
 trash/
 *.pyc
 *~
+
+build/
+
 examples/*/output/
 examples/*/*.log
 examples/*/*.bak
