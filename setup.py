@@ -32,7 +32,7 @@ else:
     
     distutils.core.setup( name = "fdmnes", 
        version = "0.2",
-       packages = ["fdmnes"],
+       packages = ["fdmnes", "CifFile"],
        package_data={'fdmnes':['config.ini']},
        author = "Carsten Richter",
        author_email = "carsten.richter@desy.de",
