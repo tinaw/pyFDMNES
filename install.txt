@@ -1,6 +1,10 @@
 (This is short. For further information see http://docs.python.org/install/)
 
-Start a command line and change to this directory.
+
+First: EDIT THE setup.cfg !
+
+
+Then start a command line and change to this directory.
 You can also use an interactive python command line (ipython).
 In this case, the command ``python`` has to be replaced by ``run`` in
 the following.
