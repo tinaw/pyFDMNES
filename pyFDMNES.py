@@ -113,6 +113,30 @@ class Parameters(dict):
                 "'%s' not found in list of valid FDMNES parameters."%key
             )
         else:
+            GroupName = settings.GroupMembers[keyset]
+            DefVal = getattr(settings.Defaults, GroupName)[keyset]
+            Type = type(DefVal)
+            try:
+                if Type is tuple:
+                    value = tuple((value),)
+                else:
+                    value = Type(value)
+            except TypeError:
+                raise TypeError(
+                    'Expected %s for parameter %s'%(Type.__name__, keyset))
+            # deep check:
+            if Type is tuple:
+                DefLen = len(DefVal)
+                if DefLen > 0 and len(value)!=DefLen:
+                    raise ValueError(
+                        "Length of %s is expected to be %i"%(keyset, DefLen))
+                for i in range(DefLen):
+                    try:
+                        value = type(DefVal)(value)
+                    except:
+                        raise TypeError(
+                            "Element %i of %s has to be of type %s"\
+                            %(i, keyset, type(DefVal)))
             dict.__setitem__(self, keyset, value)
 
     def __getitem__(self, key):
@@ -123,8 +147,7 @@ class Parameters(dict):
             return Group[key]
         else:
             raise ValueError(
-                "'%s' not found in list of valid FDMNES parameters."%key
-            )
+                "'%s' not found in list of valid FDMNES parameters."%key)
     __setattr__ = __setitem__
     __getattr__ = __getitem__
     
@@ -364,6 +387,7 @@ class fdmnes(object):
         
         for line in cb.GetLoop("_atom_site_label"):
             symbol = line._atom_site_type_symbol
+            symbol = filter(str.isalpha, symbol)
             label = line._atom_site_label
             px = mkfloat(line._atom_site_fract_x)
             py = mkfloat(line._atom_site_fract_y)
@@ -383,11 +407,6 @@ class fdmnes(object):
             return True
         else:
             value = self.P[keyw]
-        if Group!=None:
-            deftype = type(Group[keyw])
-            assert isinstance(self.P[keyw], deftype),\
-                "Wrong type: Parameter %s has to be of type %s"\
-                %(keyw, deftype)
         if keyw=="Atom" and len(value):
             numspecies = len(np.unique(self.elements.values()))
             numconf = len(value)
@@ -487,7 +506,7 @@ class fdmnes(object):
         for Name in TestGroup:
             if self.P.has_key(Name) and bool(self.P[Name]):
                 if Name in ["Convolution"] and \
-                   not Group.has_key(Name):
+                   not Group.has_key(Name) and len(self.P.Calculation):
                     return True
             elif Group.has_key(Name):
                 return True
@@ -620,7 +639,7 @@ class fdmnes(object):
         self.Jobs.append(self.path)
         
     
-    def Run(self, jobs=None, wait=False, logpath = None, verbose=False):
+    def Run(self, jobs=None, wait=True, logpath=None, verbose=False):
         """
             Method to write the ``fdmfile.txt'' and, subsequently, to start
             the FDMNES simulation. The simulation will be perfomed for the
@@ -660,8 +679,8 @@ class fdmnes(object):
         if logpath==None:
             flist = os.listdir(os.curdir)
             flist = filter(lambda s: (s[:6] + s[-4:])=="fdmnes.log", flist)
-            flist = map(lambda s: int(s[7:-4]), flist)
-            lognum = sorted(flist)[-1]
+            flist = map(lambda s: int(s[7:-4]) if s.isdigit() else 0, flist)
+            lognum = (sorted(flist)[-1]+1) if len(flist) else 0
             self.logpath = logpath = "fdmnes.%i.log"%lognum
         
         logfile = open(logpath, "w")
@@ -814,10 +833,7 @@ class fdmnes(object):
             if Type is not list:
                 assert len(Values) == 1, "Many lines of input given for "\
                     "Parameter %s. Only one line of input accepted!"%keyw
-                if Type is tuple:
-                    Values = Type(Values)
-                else:
-                    Values = Type(Values[0])
+                Values = Values[0]
             self.P[keyw] = Values
             
         if structure and not structure.keys()[0].endswith("_p"):
@@ -876,7 +892,7 @@ class fdmnes(object):
         
         self.WriteInputFile(path, overwrite)
         if not writeonly:
-            self.Run(path)
+            self.Run(path, wait=True)
         self.P.Convolution = False
         return path
     
@@ -927,7 +943,7 @@ class fdmnes(object):
                 data = np.loadtxt(fp, skiprows = ind)
             else:
                 raise IOError(
-                    "FDMNES output file not found:%s%s"%(os.linesep, emsg))
+                    "FDMNES output file not found:%s%s"%(os.linesep, fp))
             if not len(output):
                 output.append(data[:,0])
             output.append(data[:,1])

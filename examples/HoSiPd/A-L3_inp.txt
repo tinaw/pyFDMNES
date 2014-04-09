@@ -1,0 +1,65 @@
+! Indata file for the fdmnes program
+
+! Calculation in Hematite to see the Finkelstein effect on the (111)sigma-pi reflection.
+
+! The "spherical" keyword gives output files containing the contribution of each spherical tensor components
+
+! on each reflections.
+
+
+ Filout
+  abAugust12/A_L3/A-L3
+
+ Range
+ -50. 2. -30. 0.4 30. 1. 100. 2. 500.
+
+Radius
+  5.4
+
+ Rpotmax
+  15.4
+
+ Memory_save
+
+ Density
+
+ Self_absorption
+
+ Edge
+  L3
+
+ Hubbard
+  10.0
+
+ SCF
+ 
+ Delta_E_conv
+  0.5
+
+ N_self
+  1000
+
+ P_self
+  0.32
+
+! R_self
+!  4.1
+
+ Crystal
+  8.10     8.10     4.00    90. 90. 120.    
+  67   0.          0.          0.
+  67   0.5         0.          0.
+  67   0.          0.5         0.
+  67   0.5         0.5         0.    
+  14   0.16666667  0.33333333  0.5      
+  14   0.33333333  0.16666667  0.5      
+  14   0.83333333  0.16666667  0.5      
+  14   0.16666667  0.83333333  0.5      
+  14   0.66666667  0.83333333  0.5      
+  14   0.83333333  0.66666667  0.5  
+  46   0.66666667  0.33333333  0.5      
+  46   0.33333333  0.66666667  0.5 
+
+ Convolution
+
+ End

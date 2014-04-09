@@ -5,12 +5,18 @@ Created on Thu Aug 22 15:03:25 2013
 @author: weiget
 """
 import os
-import sys
-import numpy as np
 import fdmnes
 import matplotlib.pyplot as plt
+import numpy as np
 
-sim = fdmnes.fdmnes("BaTiO3.cif", resonant="Ti1")
+
+DIR = "output"
+if not os.path.isdir(DIR):
+    os.mkdir(DIR)
+
+sim = fdmnes.fdmnes("BaTiO3.cif", resonant="Ti")
+
+os.chdir(DIR) # move to output folder
 
 sim.P.radius = 3.5
 sim.P.Range = -10., 0.1, 10, 0.2, 30, 1, 50
@@ -29,7 +35,7 @@ for z in zpos:
     
     sim.Run(wait=True)
     
-    assert not sim.Status()
+    assert sim.Status()
     
     sim.DoConvolution(overwrite=True)
     sim.Run(wait=True)

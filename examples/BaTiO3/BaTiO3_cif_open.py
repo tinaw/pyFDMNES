@@ -5,9 +5,17 @@ Created on Thu Aug 08 15:44:09 2013
 @author: weiget
 """
 import fdmnes
+import os
 import matplotlib.pyplot as plt
 
+DIR = "output"
+if not os.path.isdir(DIR):
+    os.mkdir(DIR)
+
+
 sim = fdmnes.fdmnes("BaTiO3.cif")
+
+os.chdir(DIR) # move to output folder
 
 sim.P.Range = (-15, 0.5, 50)
 sim.P.radius = 2.0
@@ -33,7 +41,6 @@ plt.plot (data[:,0], data[:,1], label="No Green")
 
 sim.DoConvolution(overwrite=True)
 
-sim.Run(wait=True)
 sim.Status()
 data = sim.get_XANES(conv=True)
 plt.plot (data[:,0], data[:,1], label="No Green convoluted")
