@@ -19,26 +19,12 @@ import string
 import collections
 import settings
 import ConfigParser
-
+import itertools
 
 conffile = os.path.join(os.path.dirname(__file__), "config.ini")
 conf = ConfigParser.ConfigParser()
 conf.read(conffile)
 
-
-
-def array2str(array, precision=4):
-    array = np.array(array)
-    if array.ndim<2:
-            array = array[:,np.newaxis].T
-    if array.dtype == int:
-        zahl = "%i "
-    elif array.dtype == float:
-        zahl = "%." + str(int(precision)) + "f " 
-    save_value = StringIO.StringIO()
-    np.savetxt(save_value, array, fmt = zahl)   
-    values = save_value.getvalue()
-    return values
 
 
 def param2str(param):
@@ -200,6 +186,9 @@ class fdmnes(object):
                                 - metric (cell dimensions) of the crystal
                             or
                                 - path to .cif-file
+                            or
+                                - detailed name of space group 
+                                  (including setting)
         """
         self.positions = collections.OrderedDict() # symmetric unit
         self.Defaults = settings.Defaults
@@ -211,6 +200,7 @@ class fdmnes(object):
         # self.convolution = True
         self.P = Parameters()
         self.Jobs = []
+        self.NumCPU = 1
         
         ### FIND FDMNES ####################################################
         if fdmnes_path==None:
@@ -241,35 +231,39 @@ class fdmnes(object):
                     """%(fname, self.fdmnes_dir, conffile))
         with open(fpath, "r") as fh:
             sgcont = filter(lambda s: s.startswith("*"), fh.readlines())
-            sgcont = map(str.strip, sgcont)
-            sgcont = map(lambda s: s.strip("*"), sgcont)
-            sgcont = map(lambda s: s.split()[:3], sgcont)
-            self.spacegroups = np.vstack(sgcont).astype(str)
+        sgcont = map(str.strip, sgcont)
+        sgcont = map(lambda s: s.strip("*").replace("=",""), sgcont)
+        sgcont = map(lambda s: s.split(), sgcont)
+        self.spacegroups = sgcont
+        self._spacegroups_flat = list(itertools.chain.from_iterable(sgcont))
         
         ### LOAD STRUCTURE #################################################
-        if structure in self.spacegroups:
-            self.sg = structure
-            self.a, self.b, self.c, \
-            self.alpha, self.beta, self.gamma = 1, 1, 1, 90, 90, 90
-            self.cif = False
-        elif isinstance(structure, (tuple, list, np.ndarray)):
-            structure = np.ravel(structure).astype(float)
-            self.a, self.b, self.c, \
-            self.alpha, self.beta, self.gamma = structure
-            self.cif = False
-        elif os.path.isfile(structure):
-             end = os.path.splitext(structure)[1].lower()
-             if end == ".cif":
-                 self.load_cif(structure, resonant)
-                 self.cif = True
-             elif end == ".txt":
-                 self.LoadInputFile(structure)
-        else:
+        try:
+            if structure in self._spacegroups_flat:
+                self.sg = structure
+                self.a, self.b, self.c, \
+                self.alpha, self.beta, self.gamma = 1, 1, 1, 90, 90, 90
+                self.cif = False
+            elif hasattr(structure, "__iter__") and len(structure)==6:
+                structure = map(float, structure)
+                self.a, self.b, self.c, \
+                self.alpha, self.beta, self.gamma = structure
+                self.cif = False
+            elif os.path.isfile(structure):
+                 end = os.path.splitext(structure)[1].lower()
+                 if end == ".cif":
+                     self.load_cif(structure, resonant)
+                     self.cif = True
+                 elif end == ".txt":
+                     self.LoadInputFile(structure)
+            else:
+                raise ValueError
+        except Exception as emsg:
             raise ValueError(
-                "Invalid input for structure (file not found): %s"\
-                %str(structure))
+                "Invalid input for structure (file not found): %s%s%s"\
+                %(str(structure), os.linesep, emsg))
         
-        
+    
     
     def add_atom(self, label, position, resonant=False, occupancy=1.):
         """
@@ -295,7 +289,7 @@ class fdmnes(object):
         if len(position) is not 3:
             raise TypeError("Enter 3D position object!")
             
-        position = np.array(position)
+        position = tuple(position)
         #label = label.replace("_", "")
         SymList = elements.Z.keys()
         if label in SymList:
@@ -370,7 +364,6 @@ class fdmnes(object):
             i = self.sg_name.find(":")
             if i>=0:
                 self.sg_num += self.sg_name[i:]
-                self.sg_name += self.sg_name[i:]
         
         if not hasattr(self, "sg_num") and not hasattr(self, "sg_name"):
             raise IOError("No space group found in .cif file: %s"%path)
@@ -379,7 +372,7 @@ class fdmnes(object):
             self._check_sg(self.sg_num, raiseError=False):
             self.sg = self.sg_num
         elif hasattr(self, "sg_name") and \
-             self._check_sg(self.sg_name, raiseError=True):
+            self._check_sg(self.sg_name, raiseError=True):
             self.sg = self.sg_name
         else:
             raise ValueError("No valid space group given in .cif file.")
@@ -419,7 +412,7 @@ class fdmnes(object):
         else:
             value = self.P[keyw]
         if keyw=="Atom" and len(value):
-            numspecies = len(np.unique(self.elements.values()))
+            numspecies = len(set(self.elements.values()))
             numconf = len(value)
             if not numconf == numspecies:
                 raise ConsistencyError(errmsg="Number of given electron "
@@ -432,15 +425,13 @@ class fdmnes(object):
     
     def _check_sg(self, sg, raiseError=True):
         sg = str(sg)
-        if sg in self.spacegroups:
+        if sg in self._spacegroups_flat:
             return True
         else:
-            message = ""
-            for group in self.spacegroups:
-                groupstr = ", ".join(group)
-                if sg in groupstr:
-                    message += groupstr + os.linesep
-            if message:
+            sgstr = map(lambda s: ", ".join(s), self.spacegroups)
+            foundgroup = filter(lambda s: sg in s, sgstr)
+            message = os.linesep.join(foundgroup)
+            if len(foundgroup):
                 message = "Did you mean one of the following groups?:%s%s"\
                           %(os.linesep, message)
             errmsg="""
@@ -653,7 +644,8 @@ class fdmnes(object):
         self.Jobs.append(self.path)
         
     
-    def Run(self, jobs=None, wait=True, logpath=None, verbose=False):
+    def Run(self, jobs=None, wait=True, logpath=None, verbose=False, 
+                  writeonly = False):
         """
             Method to write the ``fdmfile.txt'' and, subsequently, to start
             the FDMNES simulation. The simulation will be perfomed for the
@@ -691,6 +683,9 @@ class fdmnes(object):
         with open(fdmfile, "w") as f:
             f.writelines(os.linesep.join(output))
         
+        if writeonly:
+            return jobs
+        
         if logpath==None:
             flist = os.listdir(os.curdir)
             flist = filter(lambda s: (s[:6] + s[-4:])=="fdmnes.log", flist)
@@ -699,11 +694,11 @@ class fdmnes(object):
             lognum = (sorted(flist)[-1]+1) if len(flist) else 0
             self.logpath = logpath = "fdmnes.%i.log"%lognum
         
-        logfile = open(logpath, "w")
         #errfile = open(os.path.join(self.workdir, "fdmnes_error.txt", "w"))
         if verbose:
             stdout = None
         else:
+            logfile = open(logpath, "w")
             stdout = logfile
             print("Writing output to: %s"%logpath)
         try:
@@ -720,7 +715,8 @@ class fdmnes(object):
             print(self.fdmnes_exe)
             print("Message: %s"%e)
         finally:
-            logfile.close()
+            if not verbose:
+                logfile.close()
         self.Jobs = []
         return jobs
         
@@ -933,8 +929,12 @@ class fdmnes(object):
         if fpath==None:
             fpath = self.path_out + ".txt"
         if conv and not fpath.endswith("_conv.txt"):
-            print("Doing Convolution...")
-            self.DoConvolution(overwrite=True)
+            if os.path.isfile(self.path_out + "_conv.txt"):
+                fpath = self.path_out + "_conv.txt"
+            else:
+                print("Doing Convolution...")
+                self.DoConvolution(overwrite=True)
+                fpath = self.path_out + ".txt"
         # Can be the case when writeonly == True:
         elif not conv and fpath.endswith("_conv.txt"):
             if len(self.P.Calculation):
@@ -1067,6 +1067,7 @@ class fdmnes(object):
                 header = content[ind-1] if ind>0 else ""
                 header = header.replace("(","").replace(")", "")
                 header = header.split()
+                header = map(lambda s: "F"+s if s[0].isdigit() else s, header)
                 header.pop(1) # XANES
                 DAFSdata = collections.namedtuple("DAFSdata", header)
                 data = np.loadtxt(fp, skiprows = ind)
