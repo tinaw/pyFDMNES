@@ -199,7 +199,8 @@ class fdmnes(object):
         self.Crystal = True
         # self.convolution = True
         self.P = Parameters()
-        self.Jobs = []
+        self.jobs = []
+        self.proc = []
         self.NumCPU = 1
         
         ### FIND FDMNES ####################################################
@@ -541,7 +542,7 @@ class fdmnes(object):
         self.check_parameters("Atom", settings.Defaults.Basic)
         for label in self.positions.iterkeys():
             if hasattr(self.P, "Atom") and len(self.P.Atom):
-                atomnum = self.P.Atom.index(self.Z[label]) + 1
+                atomnum = [at[0] for at in self.P.Atom].index(self.Z[label])+1
             else:
                 atomnum = self.Z[label]
             pos = tuple(self.positions[label])
@@ -634,65 +635,50 @@ class fdmnes(object):
         with open(path, "w") as f:
             f.writelines(os.linesep.join(output))
     
-    def AddToJobs(self):
-        """
-            Add the current job (the current input file) to the list of jobs.
-        """
-        assert hasattr(self, "path"), \
-            "Attribute `path` has not been defined. "\
-            "Run method WriteInputFile() first."
-        self.Jobs.append(self.path)
-        
     
-    def Run(self, jobs=None, wait=True, logpath=None, verbose=False, 
+    def Run(self, job=None, wait=True, logpath=None, verbose=False, 
                   writeonly = False):
         """
             Method to write the ``fdmfile.txt'' and, subsequently, to start
             the FDMNES simulation. The simulation will be perfomed for the
-            specified list of jobs.  If it is none, by default, the list
-            ``Jobs'' will be processed. If it is empty, the last job (input
-            file) will be run.
+            specified job.  If it is None, the last job (input file) will be
+            run.
             
-            Returns the list of Jobs.
         """
-        assert self.Status(verbose=False),\
-            "FDMNES process already running. See ``Status'' method."
+        if job==None:
+            job = self.path
+        if not os.path.isfile(job):
+            raise ValueError("File not found:"%job)
         
-        if jobs==None:
-            if len(self.Jobs):
-                jobs=self.Jobs
-            elif hasattr(self, "path"):
-                jobs = [self.path]
-        elif isinstance(jobs, str):
-            if os.path.isfile(jobs):
-                jobs = [jobs]
-        if len(jobs)==0:
-            raise ValueError("No jobs to process!")
-        
-        self.Jobs = jobs
         
         fdmfile = "fdmfile.txt"
         
         output = []
-        Run_File = 1
-        output.append("%i"%len(jobs))
+        output.append("1")
         output.append("")
-        output.extend(jobs)
+        output.append(job)
         
-        print("Processing: %s"%(" ".join(jobs)))
+        print("Processing: %s"%job)
         with open(fdmfile, "w") as f:
             f.writelines(os.linesep.join(output))
         
         if writeonly:
-            return jobs
+            return job
         
-        if logpath==None:
-            flist = os.listdir(os.curdir)
-            flist = filter(lambda s: (s[:6] + s[-4:])=="fdmnes.log", flist)
-            flist = map(lambda s: s[7:-4], flist)
-            flist = map(lambda s: int(s) if s.isdigit() else -1, flist)
-            lognum = (sorted(flist)[-1]+1) if len(flist) else 0
-            self.logpath = logpath = "fdmnes.%i.log"%lognum
+        if logpath==None and not verbose:
+            basename = os.path.basename(job)
+            basename, ext = os.path.splitext(basename)
+            outdir = os.path.dirname(job)
+            if not outdir:
+                outdir = os.curdir
+            flist = os.listdir(outdir)
+            flist = filter(lambda s: s.startswith(basename), flist)
+            flist = filter(lambda s: s.endswith(".log"), flist)
+            flist = [os.path.splitext(F)[0] for F in flist]
+            lognum = [os.path.splitext(F)[1].strip(os.extsep) for F in flist]
+            lognum = sorted(map(int, lognum))
+            lognum = (lognum[-1]+1) if len(lognum) else 0
+            logpath = os.path.join(outdir, basename + ".%i.log"%lognum)
         
         #errfile = open(os.path.join(self.workdir, "fdmnes_error.txt", "w"))
         if verbose:
@@ -702,13 +688,15 @@ class fdmnes(object):
             stdout = logfile
             print("Writing output to: %s"%logpath)
         try:
-            self.proc = subprocess.Popen(self.fdmnes_exe, stdout=stdout)
+            self.proc.append(subprocess.Popen(self.fdmnes_exe, stdout=stdout))
                                                       #stderr = errfile)
+            self.jobs.append(job)
+            jobID = len(self.proc)
             if wait:
-                self.proc.wait()
+                self.proc[-1].wait()
                 print("FDMNES simulation finished.")
             else:
-                print("FDMNES process started in background.")
+                print("FDMNES process #%i started in background."%jobID)
                 print("See the ``Status'' method for details.")
         except Exception as e:
             print("An error occured when running FDMNES executable at")
@@ -717,10 +705,9 @@ class fdmnes(object):
         finally:
             if not verbose:
                 logfile.close()
-        self.Jobs = []
-        return jobs
+        return jobID
         
-    def Status(self, path=None, full_output=False, verbose=True):
+    def Status(self, jobID=None, full_output=False, verbose=True):
         """ 
             Method to check the status of running simulations.
             
@@ -729,27 +716,23 @@ class fdmnes(object):
                 True, if no process is running
                 2, if the specified job is finished (last by default)
         """
-        if path==None:
-            if len(self.Jobs):
-                path = self.Jobs[0]
-            elif hasattr(self, "path"):
-                path = self.path
+        NumProc = len(self.proc)
+        if jobID==None:
+            jobID = -1
+        jobID = jobID%NumProc
         message = []
-        if not hasattr(self, "proc"):
+        if not NumProc:
             result = True
             message.append("No process was started.")
-        elif self.proc.poll() == None:
+        elif self.proc[jobID].poll()==None:
             result = False
-            message.append("FDMNES simulation is running.")
+            message.append("Simulation is running for job #%i: %s"\
+                                        %(jobID+1, self.jobs[jobID]))
         else:
             result = True
-            message.append("FDMNES simulation finished.")
-        
-        if path!=None:
-            message.append("Current Job: %s"%path)
-            if path in self.Jobs:
-                ind = self.Jobs.index(path)
-                message.append("Position in list of Jobs: %i"%ind)
+            path = self.jobs[jobID]
+            jobstr = "#%i/%i - %s"%(jobID+1, NumProc, path)
+            message.append("Current Job: %s"%jobstr)
             ParamIn = self._parse_input_file(path)
             P = ParamIn["Param"]
             if P.has_key("Extract") and P["Extract"][0]:
@@ -765,10 +748,14 @@ class fdmnes(object):
                     message.append("Job finished.")
                     result = 2
                 else:
-                    message.append("Job not finished.")
+                    message.append("Job aborted.")
+            elif "_conv" in path and P.has_key("Calculation") and \
+                                os.path.isfile(self.path_out + ".txt"):
+                message.append("Job finished.")
+                result = 2
             else:
                 message.append("Job waiting (not started yet).")
-        
+        message.append("")
         if full_output:
             return result, message
         else:
@@ -919,7 +906,7 @@ class fdmnes(object):
                 conv: bool (default: False)
                     If the calculation after convolution is desired.
                 
-                path: string (optional)
+                fpath: string (optional)
                     A specific FDMNES output can be given. By default, if
                     choosing unconvoluted data, all absorbing atoms will be
                     returned.
@@ -941,8 +928,6 @@ class fdmnes(object):
                 fpath = self.P.Calculation
             else:
                 fpath = fpath.replace("_conv", "")
-        if not self.Status(verbose=False)==2:
-            self.Run(wait=True)
         
         if not isinstance(fpath, list):
             fpath = [fpath]
@@ -966,8 +951,8 @@ class fdmnes(object):
         return np.vstack((output)).T
         
         
-    def get_DAFS(self, miller, pol_in, pol_out, azimuth, conv = True,
-                 fpath=None):
+    def get_DAFS(self, miller, pol_in, pol_out, azimuth, conv=True,
+                 verbose=False):
         """
         
             Method to read-out the calculated DAFS datas. It's possible to get
@@ -1029,57 +1014,39 @@ class fdmnes(object):
         path = "_rxs".join(os.path.splitext(self.path))
         self.WriteInputFile(path, overwrite=True, update=False)
         
-        self.Run(path)
+        self.Run(path, wait=True, verbose=verbose)
         self.Extract = False
         self.P.Convolution = wasconv
         
         
         
-        if fpath==None and self.Status(verbose=False)==2:
-            if conv:
-                fpath = self.path_out + "_rxs_conv.txt"
+        if conv:
+            fpath = self.path_out + "_rxs_conv.txt"
+        else:
+            num_absorb = self.bavinfo["num_absorber"]
+            if num_absorb > 1:
+                calclist = ["_%.i"%(i+1) for i in range(num_absorb)]
             else:
-                num_absorb = self.bavinfo["num_absorber"]
-                if num_absorb > 1:
-                    calclist = ["_%.i"%(i+1) for i in range(num_absorb)]
-                else:
-                    calclist = [""]
-                fpath = map(lambda s: self.path_out + "_rxs" + s + ".txt", 
-                            calclist)
-        if not isinstance(fpath, (list, tuple)):
-            fpath = [fpath]
+                calclist = [""]
+            fpath = map(lambda s: self.path_out + "_rxs" + s + ".txt", 
+                        calclist)
+        
         self.path_rxs = fpath
-        foundCalc = map(os.path.isfile, fpath)
-        if not len(foundCalc) or not all(foundCalc):      
-            raise ValueError(
-                "No finished simulation found and no file found as given "\
-                "given by ``fpath''. "\
-                "Maybe try to ``Run()'' simulation in advance.")
         
-        output = []
-        for fp in fpath:
-            if os.path.isfile(fp):
-                with open(fp, "r") as fh:
-                    content = fh.readlines()
-                content = map(str.strip, content)
-                findEne = map(lambda s: s.startswith("Energy"), content)
-                ind = (findEne.index(True)+1) if any(findEne) else 0
-                header = content[ind-1] if ind>0 else ""
-                header = header.replace("(","").replace(")", "")
-                header = header.split()
-                header = map(lambda s: "F"+s if s[0].isdigit() else s, header)
-                header.pop(1) # XANES
-                DAFSdata = collections.namedtuple("DAFSdata", header)
-                data = np.loadtxt(fp, skiprows = ind)
-                data = list(data.T)
-                data.pop(1) # XANES
-                DAFS = DAFSdata(*data)
-                output.append(DAFS)
-            else:
-                raise IOError(
-                    "FDMNES output file not found:%s%s"%(os.linesep, fp))
-        
-        
-        
+        with open(fpath, "r") as fh:
+            content = fh.readlines()
+        content = map(str.strip, content)
+        findEne = map(lambda s: s.startswith("Energy"), content)
+        ind = (findEne.index(True)+1) if any(findEne) else 0
+        header = content[ind-1] if ind>0 else ""
+        header = header.replace("(","").replace(")", "")
+        header = header.split()
+        header = map(lambda s: "F"+s if s[0].isdigit() else s, header)
+        header.pop(1) # XANES
+        DAFSdata = collections.namedtuple("DAFSdata", header)
+        data = np.loadtxt(fpath, skiprows = ind)
+        data = list(data.T)
+        data.pop(1) # XANES
+        DAFS = DAFSdata(*data)
         
         return DAFS
