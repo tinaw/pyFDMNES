@@ -623,7 +623,7 @@ class fdmnes(object):
                         output.append(value)
         
         # print empty line before each keyword
-        for keyw in self.P.viewkeys():
+        for keyw in self.P.keys():
             if keyw in output:
                 ind = output.index(keyw)
                 output.insert(ind, "")
