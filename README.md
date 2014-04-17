@@ -8,3 +8,5 @@ Requirements:
     - python 2.7
     - python non-standard modules:
         -> numpy
+    
+    - fdmnes: Version > March 28th 2014

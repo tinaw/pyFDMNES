@@ -10,9 +10,10 @@
 # Copyright (c) 2014 Carsten Richter, Tina Weigel All rights reserved.
 #----------------------------------------------------------------------
 
+import os
+os.environ["OPENBLAS_MAIN_FREE"] = '1'
 import numpy as np
 import StringIO
-import os
 import elements
 import subprocess
 import string

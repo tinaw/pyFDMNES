@@ -9,7 +9,8 @@ Groups = ["Basic",
           "Spin",
           "Convolution", 
           "Extract", 
-          "Experiment"]
+          "Experiment",
+          "Technical"]
 
 
 ParamTypes = namedtuple("ParamTypes", Groups)
@@ -76,6 +77,15 @@ Defaults.Spin["Ang_spin"] = (0.,0.,0.) # 3-tuple float
 Defaults.Spin["Magnetism"] = False
 Defaults.Spin["Nonrelat"] = False
 Defaults.Spin["Spinorbite"] = False
+
+
+Defaults.Technical["Check"] = ()
+Defaults.Technical["check_all"] = False #equivalent to icheck = 3 for all the subroutines
+Defaults.Technical["no_check"] = False #equivalent to icheck = 0 for all the subroutines
+Defaults.Technical["check_pot"] = False  #equivalent to icheck = 3 for all the subroutines concerning the potential
+Defaults.Technical["check_mat"] = False  #equivalent to icheck = 3 for the matrices MSM or FDM
+Defaults.Technical["check_sph"] = False  #equivalent to icheck = 3 for the subroutine ``sphere''
+Defaults.Technical["check_coabs"] = False #equivalent to icheck = 3 for the subroutine ``coabs''
 
 Defaults.Convolution["Calculation"] = []
 Defaults.Convolution["Check_conv"] = False
