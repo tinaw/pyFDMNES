@@ -52,6 +52,8 @@ def mkfloat(string):
     return float(string)
 
 
+
+
 def keyword_exists(key):
     key = key.lower()
     keyset = None
@@ -89,6 +91,16 @@ def get_polarization(pol):
             pol = None
     return pol
 
+
+def get_energy(Range):
+    if len(Range)%2 != 1:
+        raise ConsistencyError("Invalid input for Range."
+            "tuple of odd length expected.")
+    energy = []
+    for i in range(0, len(Range)-2, 2):
+        energy.append(np.arange(Range[i], Range[i+2], Range[i+1]))
+    energy.append(Range[-1])
+    return np.hstack(energy)
 
 class Parameters(dict):
     """
@@ -714,7 +726,7 @@ class fdmnes(object):
             
             Returns:
                 False, if a process is running
-                True, if no process is running
+                True, if no process is running  
                 2, if the specified job is finished (last by default)
         """
         NumProc = len(self.proc)
@@ -791,7 +803,7 @@ class fdmnes(object):
         ParamIn = ParamIn["Param"]
         
         if ParamIn.has_key("Extract") and ParamIn["Extract"]:
-            self.bavfile = ParamIn["Extract"]
+            self.bavfile = ParamIn["Extract"][0]
         else:
             self.bavfile = self.path_out + "_bav.txt"
         
@@ -886,9 +898,13 @@ class fdmnes(object):
         
         if path == None:
             path = self.path
-            if not "_conv" in os.path.basename(path):
-                path = "_conv".join(os.path.splitext(path))
-        
+            curdir = os.path.dirname(path)
+            basename = os.path.basename(path)
+            if not "_conv" in basename:
+                basename = "_conv".join(os.path.splitext(basename))
+            if not "_inp" in basename:
+                basename = basename.replace("_conv", "_inp_conv")
+            path = os.path.join(curdir, basename)
         
         self.WriteInputFile(path, overwrite)
         if not writeonly:
@@ -1016,7 +1032,7 @@ class fdmnes(object):
         self.WriteInputFile(path, overwrite=True, update=False)
         
         self.Run(path, wait=True, verbose=verbose)
-        self.Extract = False
+        self.Extract = ""
         self.P.Convolution = wasconv
         
         

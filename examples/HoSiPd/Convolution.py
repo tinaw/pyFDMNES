@@ -46,8 +46,8 @@ sim.P.RXS = [(2,2,0, 1,1,0),
              (6,0,1, 1,1,0),
              (6,0,1, 1,2,0)]
 
-sim.WriteInputFile("A-L3_3_inp.txt", overwrite=True)
 sim.P.Extract = sim.bavfile
+sim.WriteInputFile("A-L3_3_inp.txt", overwrite=True)
 sim.Run(wait=True)
 
 sim.DoConvolution(overwrite=True)

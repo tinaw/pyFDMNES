@@ -7,7 +7,7 @@ Created on Thu Aug 22 15:03:25 2013
 import fdmnes
 import pylab as pl
 import os
-
+import time
 DIR = "output"
 if not os.path.isdir(DIR):
     os.mkdir(DIR)
@@ -21,10 +21,9 @@ sim.P.Extract = "BaTiO3_py_0.50_out_bav.txt"
 sim.P.RXS = [(0,0,1,1,1,45.)]
 sim.P.RXS.append((0,0,1,1,1,0.))
 
-sim.WriteInputFile("text.txt", overwrite=True)
+sim.WriteInputFile("BaTiO3_py_0.50_extract.txt", overwrite=True)
 
 sim.Run(wait=True)
-
 convpath = sim.DoConvolution(overwrite=True)
 
 xanes   = sim.get_XANES(conv=False)

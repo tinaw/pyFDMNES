@@ -5,11 +5,20 @@ Created on Tue Aug 13 18:22:28 2013
 @author: weiget
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
 import os
 import sys
 import fdmnes
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+
+
+DIR = "output"
+if not os.path.isdir(DIR):
+    os.mkdir(DIR)
+os.chdir(DIR) # move to output folder
+
 
 sim = fdmnes.fdmnes("tio2_dafs_py_inp.txt")
 

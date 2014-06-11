@@ -16,5 +16,7 @@ examples/*/*.bak
 examples/*/*/*.log
 examples/*/*/*.bak
 examples/*/fort*
+examples/*/fdmfile.txt
+examples/*/fdmnes_error.txt
 examples/Von\ Melanie/
 config.ini

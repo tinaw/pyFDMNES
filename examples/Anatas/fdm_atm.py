@@ -23,7 +23,7 @@ sim.P.Range = (-20, 0.1, 0, 0.25, 10, 1, 50)
 sim.P.Green = True
 sim.P.Quadrupole = True
 sim.P.Convolution = True
-sim.P.Radius = 6.
+sim.P.Radius = 3.5
 sim.P.SCF = False
 
 
