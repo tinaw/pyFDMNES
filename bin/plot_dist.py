@@ -42,8 +42,10 @@ ionicradii = []
 with open(fname) as bf:
     bfiter = iter(bf)
     for line in bfiter:
-        if "Atom positions in order, in the internal R2 bases" in line:
+        if "atom positions in order, in the internal r2 bases" in line.lower():
             break
+        else:
+            continue
     header = bfiter.next()
     for line in bfiter:
         if not line.strip():
@@ -56,13 +58,18 @@ with open(fname) as bf:
         z.append(float(line[26:37]))
 
         dist.append(float(line[41:53]))
-        numato.append(int(line[63:67]))
+        numato.append(int(line[67:71]))
     
     for line in bfiter:
         if "-- Potrmt --" in line:
-            break
-    bfiter.next()
-    header = bfiter.next()
+            bfiter.next()
+            header = bfiter.next()
+            line = bfiter.next()
+            if len(line)>5 and line[4:5]=="*":
+                break
+    
+    charges.append(float(line[13:22]))
+    ionicradii.append(float(line[31:40]))
     for line in bfiter:
         if not line.strip():
             break
@@ -71,11 +78,12 @@ with open(fname) as bf:
         charges.append(float(line[13:22]))
         ionicradii.append(float(line[31:40]))
 
-
-charge = [charges[i-1] for i in numato]
+print charges
+charge = [charges[i] for i in numato]
 
 data = pl.array([numato, Z, x, y, z, dist, charge])
-
+for dat in data.T:
+    print dat
 pl.hist(data[5], bins = 200)
 pl.xlabel("distance / $\\AA$")
 #pl.ylabel("atom count")
