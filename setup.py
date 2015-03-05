@@ -29,10 +29,14 @@ else:
         confsave.write(configfile)
     if len(sys.argv)<2:
         print("see install.txt for installation instructions.")
-    
+    instpackage = ["fdmnes"]
+    try:
+        import CifFile
+    except:
+        instpackage.append("CifFile")
     distutils.core.setup( name = "fdmnes", 
        version = "0.2",
-       packages = ["fdmnes", "CifFile"],
+       packages = instpackage,
        package_data={'fdmnes':['config.ini']},
        author = "Carsten Richter",
        author_email = "carsten.richter@desy.de",

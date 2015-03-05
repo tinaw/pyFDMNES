@@ -42,7 +42,7 @@ diff = []
 for fname in flist:
     sim = fdmnes.fdmnes(fname)
     diff.append(collections.defaultdict(str))
-    for key in sim.P:
+    for key in (sim.P.keys() + default.keys()):
         if key not in default or default[key]!=sim.P[key]:
             default[key] = sim.P[key]
             diff[-1][key] = str(sim.P[key])

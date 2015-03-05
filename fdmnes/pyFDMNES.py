@@ -21,6 +21,8 @@ import collections
 import settings
 import ConfigParser
 import itertools
+import time
+
 
 conffile = os.path.join(os.path.dirname(__file__), "config.ini")
 conf = ConfigParser.ConfigParser()
@@ -243,6 +245,7 @@ class fdmnes(object):
                         Further, the files xsect.dat and spacegroup.txt are
                         required in the same folder.
                     """%(fname, self.fdmnes_dir, conffile))
+        
         with open(fpath, "r") as fh:
             sgcont = filter(lambda s: s.startswith("*"), fh.readlines())
         sgcont = map(str.strip, sgcont)
@@ -626,7 +629,7 @@ class fdmnes(object):
             if self._skip_group(Group):
                 continue
             for keyw in Group.iterkeys():
-                if self.P.has_key(keyw) and self.P[keyw]!=Group[keyw]:
+                if keyw in self.P and self.P[keyw]!=Group[keyw]:
                     self.check_parameters(keyw, Group)
                     print("-> %s"%keyw)
                     value = param2str(self.P[keyw])
@@ -640,6 +643,7 @@ class fdmnes(object):
                 ind = output.index(keyw)
                 output.insert(ind, "")
         output.append("")
+        output.append("! Wrote file at %s"%time.ctime())
         output.append("End")
         if convonly:
             self.path_conv = path
@@ -650,7 +654,7 @@ class fdmnes(object):
     
     
     def Run(self, job=None, wait=True, logpath=None, verbose=False, 
-                  writeonly = False):
+                  writeonly = False, command = None):
         """
             Method to write the ``fdmfile.txt'' and, subsequently, to start
             the FDMNES simulation. The simulation will be perfomed for the
@@ -701,7 +705,9 @@ class fdmnes(object):
             stdout = logfile
             print("Writing output to: %s"%logpath)
         try:
-            self.proc.append(subprocess.Popen(self.fdmnes_exe, stdout=stdout))
+            if command==None:
+                command = self.fdmnes_exe
+            self.proc.append(subprocess.Popen(command, stdout=stdout))
                                                       #stderr = errfile)
             self.jobs.append(job)
             jobID = len(self.proc)
@@ -712,8 +718,8 @@ class fdmnes(object):
                 print("FDMNES process #%i started in background."%jobID)
                 print("See the ``Status'' method for details.")
         except Exception as e:
-            print("An error occured when running FDMNES executable at")
-            print(self.fdmnes_exe)
+            print("An error occured when running FDMNES command:")
+            print(command)
             print("Message: %s"%e)
         finally:
             if not verbose:
@@ -1058,12 +1064,13 @@ class fdmnes(object):
         header = content[ind-1] if ind>0 else ""
         header = header.replace("(","").replace(")", "")
         header = header.split()
-        header = map(lambda s: "F"+s if s[0].isdigit() else s, header)
+        #header = map(lambda s: "F"+s if s[0].isdigit() else s, header)
         header.pop(1) # XANES
-        DAFSdata = collections.namedtuple("DAFSdata", header)
+        #DAFSdata = collections.namedtuple("DAFSdata", header)
         data = np.loadtxt(fpath, skiprows = ind)
         data = list(data.T)
         data.pop(1) # XANES
-        DAFS = DAFSdata(*data)
+        DAFS = collections.OrderedDict(zip(header, data))
+        #DAFS = DAFSdata(*data)
         
-        return DAFS
+        return data
