@@ -850,7 +850,8 @@ class fdmnes(object):
                 Values[j] = Value
             if Type is not list:
                 assert len(Values) == 1, "Many lines of input given for "\
-                    "Parameter %s. Only one line of input accepted!"%keyw
+                    "Parameter %s. Only one line of input accepted! "\ 
+                    "Or unsupported keyword given: %s"%(keyw, Values[1])
                 Values = Values[0]
             self.P[keyw] = Values
             

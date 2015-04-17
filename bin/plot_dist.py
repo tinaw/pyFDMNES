@@ -78,12 +78,13 @@ with open(fname) as bf:
         charges.append(float(line[13:22]))
         ionicradii.append(float(line[31:40]))
 
-print charges
+#print charges
+#print charges, numato
 charge = [charges[i] for i in numato]
 
 data = pl.array([numato, Z, x, y, z, dist, charge])
-for dat in data.T:
-    print dat
+#for dat in data.T:
+#    print dat
 pl.hist(data[5], bins = 200)
 pl.xlabel("distance / $\\AA$")
 #pl.ylabel("atom count")

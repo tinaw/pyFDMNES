@@ -46,6 +46,7 @@ Defaults.Basic["Rpotmax"] = 0.
 Defaults.Basic["Screening"] = []
 Defaults.Basic["TDDFT"] = False
 Defaults.Basic["Z_absorber"] = 0
+#Defaults.Basic["fprim"] = False
 
 Defaults.Multipole['Dipmag'] = False
 Defaults.Multipole['E1E2'] =  False
