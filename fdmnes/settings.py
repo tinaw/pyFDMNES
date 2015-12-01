@@ -115,7 +115,7 @@ Defaults.Convolution["Thomson"] = nan
 Defaults.Convolution["Xan_atom"] = False
 
 Defaults.Extract["Extract"] = ""
-Defaults.Extract["Extractpos"] = []
+Defaults.Extract["Extractpos"] = ()
 Defaults.Extract["Extractsym"] = []
 Defaults.Extract["Rotsup"] = []
 
