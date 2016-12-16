@@ -30,10 +30,11 @@ else:
     if len(sys.argv)<2:
         print("see install.txt for installation instructions.")
     instpackage = ["fdmnes"]
-    try:
-        import CifFile
-    except:
-        instpackage.append("CifFile")
+    #try:
+    #    import CifFile
+    #except:
+    #    instpackage.append("CifFile")
+    instpackage.append("CifFile")
     distutils.core.setup( name = "fdmnes", 
        version = "0.2",
        packages = instpackage,

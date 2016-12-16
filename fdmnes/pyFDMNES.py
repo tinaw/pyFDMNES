@@ -309,20 +309,26 @@ class fdmnes(object):
         position = tuple(position)
         #label = label.replace("_", "")
         SymList = elements.Z.keys()
-        if label in SymList:
-            num = self.elements.values().count(label) + 1
-            label += str(num)
+
         labeltest = label[0].upper()
         if len(label) > 1:
             labeltest += label[1].lower()
+
         if labeltest in SymList:
+            num = self.elements.values().count(labeltest) + 1
+            label += str(num)
+
             self.elements[label] = labeltest
         elif labeltest[:1] in SymList:
+            num = self.elements.values().count(labeltest[:1]) + 1
+            label += str(num)
+
             self.elements[label] = labeltest[:1]
         else:
             raise ValueError("Atom label shall start with the symbol of the"
                              " chemical element. "
                              "Chemical element not found in %s"%label)
+
         self.Z[label] = elements.Z[self.elements[label]]
         self.positions[label] = position
         self.occupancy[label] = occupancy
@@ -379,7 +385,7 @@ class fdmnes(object):
             self.sg_name = cb["_symmetry_space_group_name_h-m"]
             self.sg_name = "".join(self.sg_name.split())
             i = self.sg_name.find(":")
-            if i>=0:
+            if i>=0 and hasattr(self, "sg_num"):
                 self.sg_num += self.sg_name[i:]
         
         if not hasattr(self, "sg_num") and not hasattr(self, "sg_name"):
@@ -407,19 +413,24 @@ class fdmnes(object):
             pass
         
         for line in cb.GetLoop("_atom_site_label"):
-            symbol = line._atom_site_type_symbol
-            symbol = filter(str.isalpha, symbol)
-            label = line._atom_site_label
+            label = str(line._atom_site_label)
+	    if hasattr(line, "_atom_site_type_symbol"):
+                symbol = line._atom_site_type_symbol
+                symbol = filter(str.isalpha, symbol)
+            else:
+                symbol = filter(str.isalpha, label)
             px = mkfloat(line._atom_site_fract_x)
             py = mkfloat(line._atom_site_fract_y)
             pz = mkfloat(line._atom_site_fract_z)
-            occ = mkfloat(line._atom_site_occupancy)
+            if hasattr(line, "_atom_site_occupancy"):
+                occ = mkfloat(line._atom_site_occupancy)
+            else:
+                occ = 1.
             position = (px, py, pz)
             self.add_atom(label, position, (label in resonant), occ)
             if symbol in resonant and symbol!=label:
                 self.P.Z_absorber = elements.Z[symbol]
-        
-    
+
     def check_parameters(self, keyw, Group=None):
         """
             Checks configured FDMNES parameters for consistency.
@@ -566,7 +577,7 @@ class fdmnes(object):
             if suffix != "":
                 occ = self.occupancy[label]
                 line += (occ,label)
-                output.append("%i %.10g %.10g %.10g %.g !%s"%line)
+                output.append("%i %.10g %.10g %.10g %.10g !%s"%line)
             else:
                 line += (label,)
                 output.append("%i %.10g %.10g %.10g !%s"%line)
@@ -713,6 +724,7 @@ class fdmnes(object):
             jobID = len(self.proc)
             if wait:
                 self.proc[-1].wait()
+                self.RemoveJob(-1)
                 print("FDMNES simulation finished.")
             else:
                 print("FDMNES process #%i started in background."%jobID)
@@ -725,7 +737,16 @@ class fdmnes(object):
             if not verbose:
                 logfile.close()
         return jobID
-        
+    
+    def RemoveJob(self,jobID):
+        NumProc = len(self.proc)
+        if jobID==-1 or jobID == NumProc-1:
+            self.jobs.pop()
+            self.proc.pop()
+        else:
+            del jobs[jobID]
+            del proc[jobID]
+
     def Status(self, jobID=None, full_output=False, verbose=True):
         """ 
             Method to check the status of running simulations.
@@ -765,12 +786,15 @@ class fdmnes(object):
                 message.append("Job bav-file: %s"%bavfile)
                 if bavinfo["success"]:
                     message.append("Job finished.")
+                    self.RemoveJob(jobID)
                     result = 2
                 else:
                     message.append("Job aborted.")
+                    self.RemoveJob(jobID)
             elif "_conv" in path and P.has_key("Calculation") and \
                                 os.path.isfile(self.path_out + ".txt"):
                 message.append("Job finished.")
+                self.RemoveJob(jobID)
                 result = 2
             else:
                 message.append("Job waiting (not started yet).")
@@ -937,15 +961,20 @@ class fdmnes(object):
             
         """
         conv = bool(conv)
+
+        path_out = self.path_out
+        if os.path.isfile(self.path_out + "_tddft.txt") and self.P.TDDFT:
+            path_out += "_tddft"
+
         if fpath==None:
-            fpath = self.path_out + ".txt"
+            fpath = path_out + ".txt"
         if conv and not fpath.endswith("_conv.txt"):
-            if os.path.isfile(self.path_out + "_conv.txt"):
-                fpath = self.path_out + "_conv.txt"
+            if os.path.isfile(path_out + "_conv.txt"):
+                fpath = path_out + "_conv.txt"
             else:
                 print("Doing Convolution...")
                 self.DoConvolution(overwrite=True)
-                fpath = self.path_out + ".txt"
+                fpath = path_out + ".txt"
         # Can be the case when writeonly == True:
         elif not conv and fpath.endswith("_conv.txt"):
             if len(self.P.Calculation):
@@ -959,6 +988,7 @@ class fdmnes(object):
         output = []
         for fp in fpath:
             if os.path.isfile(fp):
+                print("Using data from %s"%fp)
                 with open(fp, "r") as fh:
                     content = fh.readlines()
                 content = map(str.strip, content)
