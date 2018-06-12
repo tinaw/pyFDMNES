@@ -2,8 +2,11 @@
 import sys
 import os
 import distutils.core
-import ConfigParser
 
+try:
+    import ConfigParser
+except ImportError:
+    import configparser as ConfigParser
 
 
 conf = ConfigParser.ConfigParser()
