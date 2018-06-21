@@ -759,7 +759,7 @@ class fdmnes(object):
         NumProc = len(self.proc)
         if jobID==None:
             jobID = -1
-        jobID = jobID%NumProc
+        jobID = jobID%NumProc if NumProc else None
         message = []
         if not NumProc:
             result = True
@@ -884,7 +884,7 @@ class fdmnes(object):
             cell = map(float, structure.pop(0).split())
             self.a, self.b, self.c, self.alpha, self.beta, self.gamma = cell
             if self.P.has_key("Atom") and len(self.P.Atom):
-                Z = lambda i: self.P.Atom[i][0]
+                Z = lambda i: self.P.Atom[i-1][0]
             else:
                 Z = lambda i: i
             

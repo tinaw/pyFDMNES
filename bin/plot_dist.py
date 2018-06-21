@@ -65,9 +65,12 @@ with open(fname) as bf:
             bfiter.next()
             header = bfiter.next()
             line = bfiter.next()
-            if len(line)>5 and line[4:5]=="*":
+            #print line
+            if len(line)>5:
                 break
+            takenext = True
     
+    #print line
     charges.append(float(line[13:22]))
     ionicradii.append(float(line[31:40]))
     for line in bfiter:
@@ -79,8 +82,11 @@ with open(fname) as bf:
         ionicradii.append(float(line[31:40]))
 
 #print charges
-#print charges, numato
-charge = [charges[i] for i in numato]
+print charges, numato
+try:
+    charge = [charges[i] for i in numato]
+except:
+    charge = [charges[i-1] for i in numato]
 
 data = pl.array([numato, Z, x, y, z, dist, charge])
 #for dat in data.T:

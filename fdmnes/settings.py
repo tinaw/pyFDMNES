@@ -88,6 +88,16 @@ Defaults.Technical["check_mat"] = False  #equivalent to icheck = 3 for the matri
 Defaults.Technical["check_sph"] = False  #equivalent to icheck = 3 for the subroutine ``sphere''
 Defaults.Technical["check_coabs"] = False #equivalent to icheck = 3 for the subroutine ``coabs''
 
+Defaults.Technical["Sym"] = "" # point symmetry of the resonant atom
+Defaults.Technical["Nonexc"] = False # Make calculation for non excited absorbing atom for K, L1, M1 edges
+Defaults.Technical["Excited"] = False # Make calculation for excited absorbing atom for all other edges
+Defaults.Technical["Rmt"] = nan # muffin tin radius, around 0.65
+Defaults.Technical["Iord"] = 4 # order of taylor expansion for fdm
+Defaults.Technical["Adimp"] = 0.25 # inter point distance for fdm
+
+Defaults.Technical["Lmax"] = -1 # number of spherical harmotics, negative values mean additional
+
+
 Defaults.Convolution["Calculation"] = []
 Defaults.Convolution["Check_conv"] = False
 Defaults.Convolution["Convolution"] = False
@@ -115,7 +125,7 @@ Defaults.Convolution["Thomson"] = nan
 Defaults.Convolution["Xan_atom"] = False
 
 Defaults.Extract["Extract"] = ""
-Defaults.Extract["Extractpos"] = []
+Defaults.Extract["Extractpos"] = ()
 Defaults.Extract["Extractsym"] = []
 Defaults.Extract["Rotsup"] = []
 
