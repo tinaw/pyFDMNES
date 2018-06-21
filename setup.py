@@ -4,12 +4,12 @@ import os
 import distutils.core
 
 try:
-    import ConfigParser
+    import ConfigParser as configparser
 except ImportError:
-    import configparser as ConfigParser
+    import configparser
 
 
-conf = ConfigParser.ConfigParser()
+conf = configparser.ConfigParser()
 conf.read("setup.cfg")
 if not conf.has_option("global", "fdmnes_path"):
     raise ValueError(
@@ -25,10 +25,10 @@ if not os.path.isfile(fdmnes_path):
     print("File not found: %s"%fdmnes_path)
     print("Please edit file ``setup.cfg''")
 else:
-    confsave = ConfigParser.RawConfigParser()
+    confsave = configparser.RawConfigParser()
     confsave.add_section('global')
     confsave.set('global', 'fdmnes_path', fdmnes_path)
-    with open(os.path.join("fdmnes", "config.ini"), 'wb') as configfile:
+    with open(os.path.join("fdmnes", "config.ini"), 'w') as configfile:
         confsave.write(configfile)
     if len(sys.argv)<2:
         print("see install.txt for installation instructions.")
