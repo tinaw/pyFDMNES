@@ -19,15 +19,17 @@ import subprocess
 import string
 import collections
 import settings
-import ConfigParser
 import itertools
 import time
 
+try:
+    import ConfigParser as configparser
+except ImportError:
+    import configparser
 
 conffile = os.path.join(os.path.dirname(__file__), "config.ini")
-conf = ConfigParser.ConfigParser()
+conf = configparser.ConfigParser()
 conf.read(conffile)
-
 
 
 def param2str(param):
