@@ -228,9 +228,8 @@ class fdmnes(object):
                     %(os.linesep, conffile))
             else:
                 fdmnes_path = conf.get("global", "fdmnes_path")
-                fdmnes_path = os.path.expanduser(fdmnes_path)
-                fdmnes_path = os.path.abspath(fdmnes_path)
         
+        fdmnes_path = os.path.realpath(fdmnes_path)        
         self.fdmnes_dir = os.path.dirname(fdmnes_path)
         self.fdmnes_exe = fdmnes_path
         fdmnes_bin = os.path.basename(fdmnes_path)
