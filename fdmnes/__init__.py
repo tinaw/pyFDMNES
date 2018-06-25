@@ -1,1 +1,2 @@
-from pyFDMNES import *
+from .pyFDMNES import *
+

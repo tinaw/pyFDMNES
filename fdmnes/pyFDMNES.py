@@ -21,13 +21,14 @@ import collections
 import settings
 import itertools
 import time
+from .resources import resource_filename
 
 try:
     import ConfigParser as configparser
 except ImportError:
     import configparser
 
-conffile = os.path.join(os.path.dirname(__file__), "config.ini")
+conffile = resource_filename("config.ini")
 conf = configparser.ConfigParser()
 conf.read(conffile)
 
@@ -234,7 +235,7 @@ class fdmnes(object):
         self.fdmnes_exe = fdmnes_path
         fdmnes_bin = os.path.basename(fdmnes_path)
         
-        for fname in [fdmnes_bin, "xsect.dat", "spacegroup.txt"]:
+        for fname in [fdmnes_bin]:
             fpath = os.path.join(self.fdmnes_dir, fname)
             if not os.path.isfile(fpath):
                 raise ValueError(
@@ -243,10 +244,12 @@ class fdmnes(object):
                         
                         Have you entered a valid path in %s?
                         It must point on the fdmnes executable.
-                        Further, the files xsect.dat and spacegroup.txt are
-                        required in the same folder.
                     """%(fname, self.fdmnes_dir, conffile))
         
+        fpath = os.path.join(self.fdmnes_dir, "spacegroup.txt")
+        if not os.path.isfile(fpath):
+            fpath = resource_filename("spacegroup.txt")
+
         with open(fpath, "r") as fh:
             sgcont = filter(lambda s: s.startswith("*"), fh.readlines())
         sgcont = map(str.strip, sgcont)

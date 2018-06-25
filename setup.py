@@ -28,11 +28,11 @@ def fdmnes_path():
         raise IOError("File not found: {}\Please edit file ``setup.cfg''".format(fdmnes_path))
     return fdmnes_path
 
-def update_ini(fdmnes_path):
+def create_ini(fdmnes_path):
     confsave = configparser.RawConfigParser()
     confsave.add_section('global')
     confsave.set('global', 'fdmnes_path', fdmnes_path)
-    with open(os.path.join("fdmnes", "config.ini"), 'w') as configfile:
+    with open(os.path.join("fdmnes", "resources", "config.ini"), 'w') as configfile:
         confsave.write(configfile)
 
 #####################
@@ -42,35 +42,14 @@ def update_ini(fdmnes_path):
 cmdclass = {}
 
 class BuildWithConfig(build_py):
+    description = 'build with generated resources'
+    
+    def run(self):
+        create_ini(fdmnes_path())
+        build_py.run(self)
 
-  def run(self):
-    update_ini(fdmnes_path())
-    build_py.run(self)
 cmdclass['build_py'] = BuildWithConfig
 
-####################
-## "test" command ## 
-####################
-
-class TestAllPackages(Command):
-    description = 'Run all unit tests'
-    user_options = []
-
-    def initialize_options(self):
-        pass
-
-    def finalize_options(self):
-        pass
-
-    def run(self):    
-        errno = subprocess.call([sys.executable,'-m','fdmnes.tests.test_all'])
-        if errno != 0:
-            print("Tests did not pass !!!")
-            raise SystemExit(errno)
-        else:
-            print("All Tests passed.")
-
-cmdclass['test'] = TestAllPackages
 
 ###################
 ## Package setup ## 
@@ -79,7 +58,7 @@ cmdclass['test'] = TestAllPackages
 setup( name = "fdmnes", 
        version = "0.2",
        packages = find_packages(),
-       package_data={'fdmnes':['config.ini']},
+       package_data={'fdmnes.resources': ['spacegroup.txt']},
        author = "Carsten Richter",
        author_email = "carsten.richter@desy.de",
        description = """
@@ -88,6 +67,7 @@ setup( name = "fdmnes",
        long_description = """
         Python interface to the X-Ray Spectroscopy Simulation software FDMNES
         """,
-       cmdclass=cmdclass
+       cmdclass=cmdclass,
+       test_suite="fdmnes.tests.test_all.test_suite"
       )
 

@@ -24,11 +24,12 @@ Then start a command line and change to this directory.
     
         pip install .
 
-
     iii) if you want to create an inplace module which only works in
          the local folder, you can use:
     
         pip install -e .
 
+3) Test the installation:
 
+    i) python -m fdmnes.test.test_all
 

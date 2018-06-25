@@ -8,9 +8,11 @@ trash/
 *.pyc
 *~
 *.egg-info
-*.txt
+*.ini
+fdmfile.txt
 
 build/
+dist/
 
 examples/*/output/
 examples/*/*.log
@@ -21,5 +23,4 @@ examples/*/fort*
 examples/*/fdmfile.txt
 examples/*/fdmnes_error.txt
 examples/Von\ Melanie/
-fdmnes/config.ini
 
