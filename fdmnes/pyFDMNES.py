@@ -16,63 +16,24 @@ import numpy as np
 import StringIO
 import elements
 import subprocess
-import string
 import collections
 import settings
 import itertools
 import time
+
 from .resources import resource_filename
+from .parse import keyword_exists, parse_input_file, parse_bavfile, param2str, mkfloat
+
 
 try:
     import ConfigParser as configparser
 except ImportError:
     import configparser
 
+
 conffile = resource_filename("config.ini")
 conf = configparser.ConfigParser()
 conf.read(conffile)
-
-
-def param2str(param):
-    if isinstance(param, bool):
-        return ""
-    if isinstance(param, str):
-        return param
-    if isinstance(param, int):
-        return "%i"%param
-    if isinstance(param, float):
-        return "%g"%param
-    if isinstance(param, list):
-        assert all(map(lambda x: not isinstance(x, list), param))
-        return os.linesep.join(map(param2str, param))
-    if isinstance(param, tuple):
-        assert all(map(lambda x: isinstance(x, (bool,str,int,float,tuple)),
-                       param))
-        return " ".join(map(param2str, param))
-
-def mkfloat(string):
-    i = string.find("(")
-    if i>=0:
-        string = string[:i]
-    return float(string)
-
-
-
-
-def keyword_exists(key):
-    key = key.lower()
-    keyset = None
-    if settings.synonyms.has_key(key):
-        return settings.synonyms[key]
-    for Group in settings.Defaults:
-        keys = Group.keys()
-        keysl = map(str.lower, keys)
-        keysmask = map(lambda s: s==key, keysl)
-        if any(keysmask):
-            i = keysmask.index(True)
-            keyset = keys[i]
-            break
-    return keyset
 
 
 class ConsistencyError(Exception):
@@ -97,6 +58,7 @@ def get_polarization(pol):
     return pol
 
 
+
 def get_energy(Range):
     if len(Range)%2 != 1:
         raise ConsistencyError("Invalid input for Range."
@@ -106,6 +68,7 @@ def get_energy(Range):
         energy.append(np.arange(Range[i], Range[i+2], Range[i+1]))
     energy.append(Range[-1])
     return np.hstack(energy)
+
 
 class Parameters(dict):
     """
@@ -154,6 +117,7 @@ class Parameters(dict):
                             %(i, keyset, type(DefVal)))
             dict.__setitem__(self, keyset, value)
 
+
     def __getitem__(self, key):
         if dict.has_key(self, key):
             return dict.__getitem__(self, key)
@@ -165,22 +129,122 @@ class Parameters(dict):
                 "'%s' not found in list of valid FDMNES parameters."%key)
     __setattr__ = __setitem__
     __getattr__ = __getitem__
-    
+
     def __dir__(self):
         return dir(dict) + self.keys()
 
 
-def parse_bavfile(bavfile):
-    bavinfo = {}
-    with open(bavfile, "r") as bf:
-        bavcont = bf.read()
-        bf.seek(-60, 2)
-        tail = map(str.strip, bf.readlines())
-    bavinfo["success"] = (tail[-1]=='Have a beautiful day !')
-    bavinfo["num_absorber"] = \
-                         bavcont.count("Subroutine times for absorbing atom")
-    
-    return bavinfo
+
+class CurrentCalculation(object):
+    def __init__(self):
+        self.infile = None
+        self.outfile = None
+        self.bavfile = None
+        self.convfile = None
+        self.rxsfile = None
+        self.jobID = None
+
+    @property
+    def infile(self):
+        return self._infile
+
+    @infile.setter
+    def infile(self, path):
+        self.outfile = None
+        self.convfile = None
+        self.bavfile = None
+        self.rxsfile = None
+        self.jobID = None
+        self._infile = path
+
+    @property
+    def outfile(self):
+        if self._outfile is None and not self._infile is None:
+            self._outfile = parse_input_file(self._infile, outpath_only=True)
+        return self._outfile
+
+    @outfile.setter
+    def outfile(self, path):
+        self._outfile = path
+
+
+
+
+
+
+
+class Job(object):
+    _ids = itertools.count(0)
+    def __init__(self, path, command, stdout=None):
+        self.id = _id = next(self._ids)
+        self.path = path
+        self.command = command
+        self.process = subprocess.Popen(command, stdout=stdout)
+        self.finished = False
+        self._successful = False
+
+    @property
+    def is_running(self):
+        if self.finished:
+            return False
+        if self.process.poll()==None:
+            return True
+        else:
+            self.finished = True
+            return False
+
+
+    @property
+    def successful(self):
+        if not self.finished:
+            return None
+        if self._successful:
+            return True
+
+        ParamIn = parse_input_file(self.path)
+        P = ParamIn["Param"]
+        path_out = ParamIn["path_out"]
+        conv = ParamIn["conv"]
+        bavfile = ParamIn["bavfile"]
+        if os.path.exists(bavfile):
+            self.bavfile = bavfile
+            self.bavinfo = parse_bavfile(bavfile)
+            if self.bavinfo["success"]:
+                self._successful = True
+                return True
+
+        elif conv and "Calculation" in P and os.path.isfile(path_out):
+            return True
+
+        return False
+
+
+    def wait(self):
+        self.process.wait()
+        self.finished = True
+
+    def __repr__(self):
+        result = "Job #%i"%self.id
+        if self.finished:
+            result +=" (finished)"
+        result += ": %s - %s"%(self.process.__repr__(), self.path)
+        return result
+
+
+class Jobs(dict):
+    def add(self, job):
+        self[job.id] = job
+
+    def get_running(self):
+        return (self[job] for job in self if self[job].is_running)
+
+    def get_finished(self):
+        return (self[job] for job in self if not self[job].is_running)
+
+    def get_successful(self):
+        return (self[job] for job in self.get_finished() if self[job].successful)
+
+
 
 
 
@@ -189,14 +253,14 @@ class fdmnes(object):
         Python interface to the x-ray spectroscopy simulation software FDMNES.
         Easy handling of FDMNES data input and output.
     """
-    
+
     def __init__(self, structure, resonant="", verbose=False, 
                        fdmnes_path=None):
         """
             Calculation of spectra for x-ray absorption spectroscopy with
             FDMNES for given parameters and structures in the following steps:
                 - compile input file for FDMNES 
-                - process and controll the FDMNES calculation
+                - process and control the FDMNES calculation
                 - fit and plot the calculate datas
 
             Input parameters:
@@ -217,10 +281,11 @@ class fdmnes(object):
         self.Crystal = True
         # self.convolution = True
         self.P = Parameters()
-        self.jobs = []
-        self.proc = []
+        self.jobs = Jobs()
+        self.current = CurrentCalculation() # contains paths belonging to current simulation
         self.NumCPU = 1
-        
+
+
         ### FIND FDMNES ####################################################
         if fdmnes_path==None:
             if not conf.has_option("global", "fdmnes_path"):
@@ -229,23 +294,23 @@ class fdmnes(object):
                     %(os.linesep, conffile))
             else:
                 fdmnes_path = conf.get("global", "fdmnes_path")
-        
+
         fdmnes_path = os.path.realpath(fdmnes_path)        
         self.fdmnes_dir = os.path.dirname(fdmnes_path)
         self.fdmnes_exe = fdmnes_path
         fdmnes_bin = os.path.basename(fdmnes_path)
-        
+
         for fname in [fdmnes_bin]:
             fpath = os.path.join(self.fdmnes_dir, fname)
             if not os.path.isfile(fpath):
                 raise ValueError(
                     """
                         File %s not found in %s
-                        
+
                         Have you entered a valid path in %s?
                         It must point on the fdmnes executable.
                     """%(fname, self.fdmnes_dir, conffile))
-        
+
         fpath = os.path.join(self.fdmnes_dir, "spacegroup.txt")
         if not os.path.isfile(fpath):
             fpath = resource_filename("spacegroup.txt")
@@ -257,7 +322,7 @@ class fdmnes(object):
         sgcont = map(lambda s: s.split(), sgcont)
         self.spacegroups = sgcont
         self._spacegroups_flat = list(itertools.chain.from_iterable(sgcont))
-        
+
         ### LOAD STRUCTURE #################################################
         try:
             if structure in self._spacegroups_flat:
@@ -283,13 +348,13 @@ class fdmnes(object):
             raise ValueError(
                 "Invalid input for structure (file not found): %s%s%s"\
                 %(str(structure), os.linesep, emsg))
-        
-    
+
+
     
     def add_atom(self, label, position, resonant=False, occupancy=1.):
         """
             Method to give parameters for the FDMNES calculation.
-            
+
             Inputs:
             -------
                 label : string
@@ -309,29 +374,33 @@ class fdmnes(object):
             raise TypeError("Invalid label. Need string.")
         if len(position) is not 3:
             raise TypeError("Enter 3D position object!")
-            
+
         position = tuple(position)
         #label = label.replace("_", "")
         SymList = elements.Z.keys()
 
-        labeltest = label[0].upper()
-        if len(label) > 1:
-            labeltest += label[1].lower()
+        labeltest = label.capitalize()
 
         if labeltest in SymList:
+            # the label consists only of the element symbol
             num = self.elements.values().count(labeltest) + 1
-            label += str(num)
-
+            label += str(num) # produce a unique label
             self.elements[label] = labeltest
-        elif labeltest[:1] in SymList:
-            num = self.elements.values().count(labeltest[:1]) + 1
-            label += str(num)
 
+        elif labeltest[:2] in SymList:
+            self.elements[label] = labeltest[:2]
+
+        elif labeltest[:1] in SymList:
             self.elements[label] = labeltest[:1]
+
         else:
             raise ValueError("Atom label shall start with the symbol of the"
                              " chemical element. "
                              "Chemical element not found in %s"%label)
+
+        if label in self.positions:
+            raise ValueError("Atom `%s` already exists in structure. "
+                             "Remove atom using .remove_atom to overwrite")
 
         self.Z[label] = elements.Z[self.elements[label]]
         self.positions[label] = position
@@ -341,13 +410,22 @@ class fdmnes(object):
                 self.P.Absorber += (len(self.positions),)
             else:
                 self.P.Absorber = (len(self.positions),)
-        
-        
+
+    def remove_atom(label):
+        out = []
+        out.append(self.positions.pop(label))
+        out.append(self.elements.pop(label))
+        out.append(self.Z.pop(label))
+        out.append(self.occupancy.pop(label))
+        return out
+
+
+
     def load_cif(self, path, resonant=""):
         """ Method to loads a structure from a CIF file.
             Read-out parameters are space group number, spac egroup name, 
             space group origin, metric and atom positions.
-         
+
             Input:
             ------
             path : string
@@ -372,7 +450,7 @@ class fdmnes(object):
             print("File doesn't seem to be a valid .cif file: %s"%path)
             print e
             return
-        
+
         self.Crystal = True
         # Reset Structure:
         self.positions.clear()
@@ -380,21 +458,21 @@ class fdmnes(object):
         self.P.Atom = []
         self.P.Absorber = ()
         self.P.Z_absorber = 0
-        
+
         if cb.has_key("_symmetry_int_tables_number"):
             sg_num = int(cb["_symmetry_int_tables_number"])
             self.sg_num = str(sg_num)
-        
+
         if cb.has_key("_symmetry_space_group_name_h-m"):
             self.sg_name = cb["_symmetry_space_group_name_h-m"]
             self.sg_name = "".join(self.sg_name.split())
             i = self.sg_name.find(":")
             if i>=0 and hasattr(self, "sg_num"):
                 self.sg_num += self.sg_name[i:]
-        
+
         if not hasattr(self, "sg_num") and not hasattr(self, "sg_name"):
             raise IOError("No space group found in .cif file: %s"%path)
-        
+
         if hasattr(self, "sg_num") and \
             self._check_sg(self.sg_num, raiseError=False):
             self.sg = self.sg_num
@@ -403,19 +481,19 @@ class fdmnes(object):
             self.sg = self.sg_name
         else:
             raise ValueError("No valid space group given in .cif file.")
-        
+
         self.a = mkfloat(cb["_cell_length_a"])
         self.b = mkfloat(cb["_cell_length_b"])
         self.c = mkfloat(cb["_cell_length_c"])
         self.alpha = mkfloat(cb["_cell_angle_alpha"])
         self.beta  = mkfloat(cb["_cell_angle_beta"])
         self.gamma = mkfloat(cb["_cell_angle_gamma"])
-        
+
         if isinstance(resonant, str):
             resonant = [resonant]
         elif hasattr(resonant, "__iter__"):
             pass
-        
+
         for line in cb.GetLoop("_atom_site_label"):
             label = str(line._atom_site_label)
 	    if hasattr(line, "_atom_site_type_symbol"):
@@ -454,7 +532,7 @@ class fdmnes(object):
                 raise ConsistencyError(errmsg="Electronic configuration"
                     "given twice: Parameters Atom and Atom_conf")
         return True
-    
+
     def _check_sg(self, sg, raiseError=True):
         sg = str(sg)
         if sg in self._spacegroups_flat:
@@ -468,11 +546,11 @@ class fdmnes(object):
                           %(os.linesep, message)
             errmsg="""
             The given Space group ``%s'' was not found in the database.
-            
+
             Please enter the full number of the space group that you desire.
             See the International Tables or the attribute ``spacegroups''
             for more details.
-            
+
             %s
             """%(sg, message)
             if raiseError:
@@ -480,59 +558,7 @@ class fdmnes(object):
             else:
                 print errmsg
                 return False
-    
-    def _parse_input_file(self, fpath):
-        with open(fpath, "r") as fh:
-            content = fh.readlines()
-        
-        content = map(str.strip, content)
-        content = filter(lambda s: not s.startswith("!"), content)
-        content = map(lambda s: s.split("!")[0], content)
-        content = map(str.strip, content)
-        content = filter(lambda s: bool(s), content)
-        
-        Param = dict()
-        keyw = None
-        sg = None
-        while content:
-            line = content.pop(0)
-            lline = line.lower()
-            if lline == "filout" or lline=="conv_out":
-                path_out = content.pop(0)
-                #bavfile = path_out + "_bav.txt"
-            elif lline == "spgroup":
-                sg = content.pop(0)
-            elif lline.startswith("crystal") or lline.startswith("molecule"):
-                keyw = lline.capitalize()
-                Param[keyw] = []
-            elif lline=="end":
-                break
-            else:
-                nextkeyw = keyword_exists(line)
-                if nextkeyw:
-                    keyw = nextkeyw
-                    Param[keyw] = []
-                elif keyw!=None:
-                    Param[keyw].append(line)
-        
-        structure_keyw = ["Crystal", "Crystal_t", "Crystal_p",
-                          "Molecule", "Molecule_t"]
-        found_structure = map(Param.has_key, structure_keyw)
-        
-        if sum(found_structure) > 1:
-            raise ConsistencyError(
-                "Several structure definitions found in input-file. "\
-                "Structure can be specified in input-file by the "\
-                "keywords Crystal or Molecule, not both!")
-        elif sum(found_structure) == 1:
-            ind = found_structure.index(True)
-            structure = dict(structure_keyw=Param.pop(structure_keyw[ind]))
-        elif not any(found_structure):
-            #raise IOError("No structure has been defined in input-file")
-            structure = dict()
-            
-        return dict(Param=Param, sg=sg, path_out=path_out,
-                    structure=structure)
+
     
     def _skip_group(self, Group, TestGroup="all"):
         if TestGroup=="all":
@@ -545,7 +571,7 @@ class fdmnes(object):
             elif Group.has_key(Name):
                 return True
         return False
-    
+
     def write_structure(self):
         """
             Returns the structure as it is understood by FDMNES as a list
@@ -557,7 +583,7 @@ class fdmnes(object):
             output.append("Spgroup")
             output.append(self.sg)
             output.append("")
-        
+
         if any(map(lambda x: x<1, self.occupancy.values())):
             suffix = "_t"
         else:
@@ -566,10 +592,10 @@ class fdmnes(object):
             output.append("Crystal"+suffix)
         else:
             output.append("Molecule"+suffix)
-        
+
         cell = (self.a, self.b, self.c, self.alpha, self.beta, self.gamma)
         output.append("  %g %g %g %g %g %g" %cell)
-        
+
         self.check_parameters("Atom", settings.Defaults.Basic)
         for label in self.positions.iterkeys():
             if hasattr(self.P, "Atom") and len(self.P.Atom):
@@ -585,15 +611,15 @@ class fdmnes(object):
             else:
                 line += (label,)
                 output.append("%i %.10g %.10g %.10g !%s"%line)
-        
+
         return output
-    
+
     def WriteInputFile(self, path, overwrite=False, update=True):
         """ 
             Method writes an input file for the FDMNES calculation.
             The calculation parameters, for example Range and Radius etc., 
             are taken from the ``P'' object. 
-         
+
             Input:
             ------
             path : string
@@ -604,42 +630,39 @@ class fdmnes(object):
         if os.path.isfile(path) and not overwrite:
             raise IOError("File %s already exists. "
                           "Use overwrite=True to replace it."%path)
-        
+
         basepath, ext = os.path.splitext(path)
         dirname, basename = os.path.split(basepath)
-        
+
         conv = self.P.has_key("Convolution") and self.P.Convolution
         convonly = bool(conv and len(self.P.Calculation))
-        
+
         basename = basename.replace("_conv", "")
         suffix = "_out_conv" if convonly else "_out"
         if "_inp" in basename:
             base_out = basename.replace("_inp", suffix)
         else:
             base_out = basename + suffix
-        
+
         path_out = os.path.join(dirname, base_out)
-        if update:
-            self.path_out = path_out
-        
-        
+
         output = ["Filout"] if not convonly else ["Conv_out"]
         output.append(path_out + ".txt"*convonly)
         output.append("")
-        
-        output.append("Folder_dat")
-        output.append(self.fdmnes_dir)
-        output.append("")
-        
+
+        #output.append("Folder_dat") # not needed anymore
+        #output.append(self.fdmnes_dir)
+        #output.append("")
+
         if self.P.Extract:
-            self.bavfile = self.P.Extract
+            bavfile = self.P.Extract
         else:
-            self.bavfile = path_out + "_bav.txt"
-        
+            bavfile = path_out + "_bav.txt"
+
         if not convonly:
             self.P.Calculation = []
             output.extend(self.write_structure())
-        
+
         for Group in settings.Defaults:
             if self._skip_group(Group):
                 continue
@@ -651,7 +674,7 @@ class fdmnes(object):
                     output.append(keyw)
                     if value:
                         output.append(value)
-        
+
         # print empty line before each keyword
         for keyw in self.P.keys():
             if keyw in output:
@@ -661,77 +684,79 @@ class fdmnes(object):
         output.append("! Wrote file at %s"%time.ctime())
         output.append("End")
         if convonly:
-            self.path_conv = path
+            self.current.convfile = path
         elif update:
-            self.path = path
-        with open(path, "w") as f:
+            self.current.infile = path
+            self.current.bavfile = bavfile
+            self.current.outfile = path_out
+        
+        with open(path, "wb") as f:
             f.writelines(os.linesep.join(output))
+
     
-    
-    def Run(self, job=None, wait=True, logpath=None, verbose=False, 
+    def Run(self, path=None, wait=True, logpath=None, verbose=False, 
                   writeonly = False, command = None):
         """
             Method to write the ``fdmfile.txt'' and, subsequently, to start
             the FDMNES simulation. The simulation will be perfomed for the
-            specified job.  If it is None, the last job (input file) will be
+            specified input file path.  If it is None, the current one will be
             run.
-            
+
         """
-        if job==None:
-            job = self.path
-        if not os.path.isfile(job):
-            raise ValueError("File not found:"%job)
-        
+        if path is None:
+            path = self.current.infile
+        if not os.path.isfile(path):
+            raise ValueError("File not found:"%path)
+
         
         fdmfile = "fdmfile.txt"
-        
+
         output = []
         output.append("1")
         output.append("")
-        output.append(job)
-        
-        print("Processing: %s"%job)
-        with open(fdmfile, "w") as f:
+        output.append(path)
+
+        print("Processing: %s"%path)
+        with open(fdmfile, "wb") as f:
             f.writelines(os.linesep.join(output))
-        
+
         if writeonly:
-            return job
-        
+            return path
+
         if logpath==None and not verbose:
-            basename = os.path.basename(job)
+            basename = os.path.basename(path)
             basename, ext = os.path.splitext(basename)
-            outdir = os.path.dirname(job)
+            outdir = os.path.dirname(path)
             if not outdir:
                 outdir = os.curdir
             flist = os.listdir(outdir)
             flist = filter(lambda s: s.startswith(basename), flist)
             flist = filter(lambda s: s.endswith(".log"), flist)
-            flist = [os.path.splitext(F)[0] for F in flist]
+            flist =  [os.path.splitext(F)[0] for F in flist]
             lognum = [os.path.splitext(F)[1].strip(os.extsep) for F in flist]
             lognum = sorted(map(int, lognum))
             lognum = (lognum[-1]+1) if len(lognum) else 0
             logpath = os.path.join(outdir, basename + ".%i.log"%lognum)
-        
+
         #errfile = open(os.path.join(self.workdir, "fdmnes_error.txt", "w"))
         if verbose:
             stdout = None
         else:
-            logfile = open(logpath, "w")
+            logfile = open(logpath, "wb")
             stdout = logfile
             print("Writing output to: %s"%logpath)
         try:
             if command==None:
                 command = self.fdmnes_exe
-            self.proc.append(subprocess.Popen(command, stdout=stdout))
-                                                      #stderr = errfile)
-            self.jobs.append(job)
-            jobID = len(self.proc)
+            job = Job(path, command, stdout)
+            self.jobs.add(job)
+            if path == self.current.infile:
+                self.current.jobID = job.id
             if wait:
-                self.proc[-1].wait()
-                self.RemoveJob(-1)
+                job.wait()
                 print("FDMNES simulation finished.")
             else:
-                print("FDMNES process #%i started in background."%jobID)
+                print("FDMNES process #%i started in background."%job.id)
                 print("See the ``Status'' method for details.")
         except Exception as e:
             print("An error occured when running FDMNES command:")
@@ -740,68 +765,39 @@ class fdmnes(object):
         finally:
             if not verbose:
                 logfile.close()
-        return jobID
-    
-    def RemoveJob(self,jobID):
-        NumProc = len(self.proc)
-        if jobID==-1 or jobID == NumProc-1:
-            self.jobs.pop()
-            self.proc.pop()
-        else:
-            del jobs[jobID]
-            del proc[jobID]
+        return job
+
 
     def Status(self, jobID=None, full_output=False, verbose=True):
         """ 
             Method to check the status of running simulations.
-            
+
             Returns:
                 False, if a process is running
                 True, if no process is running  
                 2, if the specified job is finished (last by default)
         """
-        NumProc = len(self.proc)
-        if jobID==None:
-            jobID = -1
-        jobID = jobID%NumProc if NumProc else None
         message = []
-        if not NumProc:
+        njobs = len(self.jobs)
+        if jobID==None and njobs:
+            jobID = max(self.jobs)
+        if not njobs:
             result = True
             message.append("No process was started.")
-        elif self.proc[jobID].poll()==None:
+        elif self.jobs[jobID].is_running:
             result = False
             message.append("Simulation is running for job #%i: %s"\
-                                        %(jobID+1, self.jobs[jobID]))
+                                        %(jobID, self.jobs[jobID]))
         else:
             result = True
-            path = self.jobs[jobID]
-            jobstr = "#%i/%i - %s"%(jobID+1, NumProc, path)
-            message.append("Current Job: %s"%jobstr)
-            ParamIn = self._parse_input_file(path)
-            P = ParamIn["Param"]
-            if P.has_key("Extract") and P["Extract"][0]:
-                bavfile = P["Extract"][0]
-            else:
-                bavfile = ParamIn["path_out"] + "_bav.txt"
-            #bavfile = bavfile.replace("_conv", "")
-            if os.path.exists(bavfile):
-                bavinfo = parse_bavfile(bavfile)
-                self.bavinfo = bavinfo
-                message.append("Job bav-file: %s"%bavfile)
-                if bavinfo["success"]:
-                    message.append("Job finished.")
-                    self.RemoveJob(jobID)
-                    result = 2
-                else:
-                    message.append("Job aborted.")
-                    self.RemoveJob(jobID)
-            elif "_conv" in path and P.has_key("Calculation") and \
-                                os.path.isfile(self.path_out + ".txt"):
-                message.append("Job finished.")
-                self.RemoveJob(jobID)
+            job = self.jobs[jobID]
+            message.append("Current Job: %s"%job.__repr__())
+            if job.successful:
+                if hasattr(job, "bavfile"):
+                    message.append("Job bav-file: %s"%job.bavfile)
                 result = 2
             else:
-                message.append("Job waiting (not started yet).")
+                message.append("Job aborted.")
         message.append("")
         if full_output:
             return result, message
@@ -809,7 +805,7 @@ class fdmnes(object):
             if verbose:
                 print(os.linesep.join(message))
             return result
-        
+
         
     def LoadInputFile(self, fpath):
         """
@@ -824,23 +820,23 @@ class fdmnes(object):
         self.positions.clear()
         self.elements.clear()
         self.cif = False
-        
-        ParamIn = self._parse_input_file(fpath)
+
+        ParamIn = parse_input_file(fpath)
         self.ParamIn = ParamIn
+
         
-        
-        self.path_out = ParamIn["path_out"]
-        
+        path_out = ParamIn["path_out"]
+
         if ParamIn["sg"]!=None:
             self.sg = ParamIn["sg"]
         structure = ParamIn["structure"]
         ParamIn = ParamIn["Param"]
-        
+
         if ParamIn.has_key("Extract") and ParamIn["Extract"]:
-            self.bavfile = ParamIn["Extract"][0]
+            bavfile = ParamIn["Extract"][0]
         else:
-            self.bavfile = self.path_out + "_bav.txt"
-        
+            bavfile = path_out + "_bav.txt"
+
         if structure and structure.keys()[0].startswith("Crystal"):
             self.Crystal = True
 
@@ -848,7 +844,7 @@ class fdmnes(object):
             raise ConsistencyError(
                 "Only one of the keywords ``Atom'' and "\
                 "``Atom_conf'' may be given in the input file!")
-            
+
         for keyw in ParamIn.iterkeys():
             if not len(ParamIn[keyw]):
                 self.P[keyw] = True
@@ -882,7 +878,7 @@ class fdmnes(object):
                     "Or unsupported keyword given: %s"%(keyw, Values[1])
                 Values = Values[0]
             self.P[keyw] = Values
-            
+
         if structure and not structure.keys()[0].endswith("_p"):
             structure = structure.values()[0]
             cell = map(float, structure.pop(0).split())
@@ -891,83 +887,92 @@ class fdmnes(object):
                 Z = lambda i: self.P.Atom[i-1][0]
             else:
                 Z = lambda i: i
-            
+
             for Atom in structure:
                 Atom = Atom.split()
                 symbol = elements.symbols[Z(int(Atom[0]))]
                 position = tuple(map(float, Atom[1:4]))
                 occ = float(Atom[4]) if (len(Atom)>4) else 1
                 self.add_atom(symbol, position, occupancy = occ)
-        
-        self.path = os.path.relpath(fpath)
-        
-    
-    def DoConvolution(self, path=None, overwrite=False, writeonly=False):
+
+        self.current.infile = os.path.relpath(fpath)
+        self.current.bavfile = bavfile
+
+
+    def DoConvolution(self, convpath=None, overwrite=False, writeonly=False):
         """
             Method to write a special convolution file. It is also possible to
             define the convolution parameters in the WriteInputFile method.
-            
+
             Input:
             ------
                 path: string
                     Name of the convolution file.
         """
+
+        path_out = self.current.outfile
+        job = self.jobs[self.current.jobID]
+
+
         self.P.Convolution = True
         if not self.P.has_key("Calculation"):
             self.P.Calculation = []
-        if not len(self.P.Calculation) and self.Status(verbose=False)==2:
-            num_absorb = self.bavinfo["num_absorber"]
+        if not self.P.Calculation and job.successful:
+            num_absorb = job.bavinfo["num_absorber"]
             if num_absorb > 1:
                 calclist = ["_%.i"%(i+1) for i in range(num_absorb)]
             else:
                 calclist = [""]
-            calclist = map(lambda s: self.path_out + s + ".txt", calclist)
+            calclist = map(lambda s: path_out + s + ".txt", calclist)
             self.P.Calculation.extend(calclist)
-            
+
         foundCalc = map(os.path.isfile, self.P.Calculation)
-        if not len(foundCalc) or not foundCalc[0] or not any(foundCalc):      
+        if not foundCalc or not foundCalc[0] or not any(foundCalc):      
             raise ValueError(
                 "``Calculation'' files for Convolution not found or "\
                 "Calculation not finished. "\
                 "Check P.Calculation list or Run() Simulation in advance .")
-        
-        if path == None:
-            path = self.path
-            curdir = os.path.dirname(path)
-            basename = os.path.basename(path)
+
+        if convpath == None:
+            curdir = os.path.dirname(self.current.infile)
+            basename = os.path.basename(self.current.infile)
             if not "_conv" in basename:
                 basename = "_conv".join(os.path.splitext(basename))
             if not "_inp" in basename:
                 basename = basename.replace("_conv", "_inp_conv")
-            path = os.path.join(curdir, basename)
-        
-        self.WriteInputFile(path, overwrite)
+            convpath = os.path.join(curdir, basename)
+
+        self.current.convfile = convpath
+        self.WriteInputFile(convpath, overwrite)
         if not writeonly:
-            self.Run(path, wait=True)
+            self.Run(convpath, wait=True)
         self.P.Convolution = False
-        return path
-    
+        return convpath
+
     
     def get_XANES(self, conv=False, fpath=None):
         """
             Method to read-out the calculated XANES datas of the output file 
             created by FDMNES.
-            
+
             Input:
             -----
                 conv: bool (default: False)
                     If the calculation after convolution is desired.
-                
+
                 fpath: string (optional)
                     A specific FDMNES output can be given. By default, if
                     choosing unconvoluted data, all absorbing atoms will be
                     returned.
-            
+
         """
         conv = bool(conv)
 
-        path_out = self.path_out
-        if os.path.isfile(self.path_out + "_tddft.txt") and self.P.TDDFT:
+        path_out = self.current.outfile
+        if path_out is None:
+            raise ValueError("No calculation loaded.")
+
+        if os.path.isfile(path_out + "_tddft.txt") and self.P.TDDFT:
             path_out += "_tddft"
 
         if fpath==None:
@@ -977,18 +982,18 @@ class fdmnes(object):
                 fpath = path_out + "_conv.txt"
             else:
                 print("Doing Convolution...")
-                self.DoConvolution(overwrite=True)
-                fpath = path_out + ".txt"
+                fpath = self.DoConvolution(overwrite=True)
+                #fpath = path_out + ".txt"
         # Can be the case when writeonly == True:
         elif not conv and fpath.endswith("_conv.txt"):
             if len(self.P.Calculation):
                 fpath = self.P.Calculation
             else:
                 fpath = fpath.replace("_conv", "")
-        
+
         if not isinstance(fpath, list):
             fpath = [fpath]
-        
+
         output = []
         for fp in fpath:
             if os.path.isfile(fp):
@@ -1005,19 +1010,19 @@ class fdmnes(object):
             if not len(output):
                 output.append(data[:,0])
             output.append(data[:,1])
-        
+
         return np.vstack((output)).T
-        
+
         
     def get_DAFS(self, miller, pol_in, pol_out, azimuth, conv=True,
                  verbose=False):
         """
-        
+
             Method to read-out the calculated DAFS datas. It's possible to get
             the DAFS data's for given paramters with and without convolusion.
             If the given parameters doesn't exist, it is possible to add these
             parameter to the input file.
-            
+
             Input:
             ------
                 miller: 3-tuple (int)
@@ -1039,58 +1044,60 @@ class fdmnes(object):
                 conv: bool
                     pick convoluted data?
         """
-        
+
         assert all(map(lambda x: isinstance(x, (int, long)), miller)) \
             and len(miller)==3,\
             "Wrong input for ``miller''- (reflection-) indices. "\
             "A 3-tuple of type int is required."
         miller = tuple(miller)
-        
+
         conv = bool(conv)
-        
-        self.P.Extract = self.bavfile
+
+        self.P.Extract = self.current.bavfile
+        bavinfo = parse_bavfile(self.current.bavfile)
         wasconv = self.P.Convolution
         self.P.Convolution = conv
-        
+
+
         pol_in = get_polarization(pol_in)
         if pol_in == None:
             raise ValueError("Invalid input for pol_in")
         pol_out = get_polarization(pol_out)
         if pol_out == None:
             raise ValueError("Invalid input for pol_out")
-        
+
         angles = [0,90] # what to do with left and right?
         if isinstance(pol_in, tuple) and not isinstance(pol_out, tuple):
             pol_out = (pol_out, angles[pol_out-1])
         if not isinstance(pol_in, tuple) and isinstance(pol_out, tuple):
             pol_in = (pol_in, angles[pol_in-1])
-        
-        
+
+
         azimuth = float(azimuth)
-        
+
         self.P.RXS = [miller + (pol_in, pol_out, azimuth)]
-        path = "_rxs".join(os.path.splitext(self.path))
+        path = "_rxs".join(os.path.splitext(self.current.infile))
         self.WriteInputFile(path, overwrite=True, update=False)
-        
+
         self.Run(path, wait=True, verbose=verbose)
         self.Extract = ""
         self.P.Convolution = wasconv
-        
-        
-        
+
+
+
         if conv:
-            fpath = self.path_out + "_rxs_conv.txt"
+            fpath = self.current.outfile + "_rxs_conv.txt"
         else:
-            num_absorb = self.bavinfo["num_absorber"]
+            num_absorb = bavinfo["num_absorber"]
             if num_absorb > 1:
                 calclist = ["_%.i"%(i+1) for i in range(num_absorb)]
             else:
                 calclist = [""]
-            fpath = map(lambda s: self.path_out + "_rxs" + s + ".txt", 
+            fpath = map(lambda s: self.current.outfile + "_rxs" + s + ".txt", 
                         calclist)
-        
-        self.path_rxs = fpath
-        
+
+        self.current.rxsfile = fpath
+
         with open(fpath, "r") as fh:
             content = fh.readlines()
         content = map(str.strip, content)
@@ -1107,5 +1114,5 @@ class fdmnes(object):
         data.pop(1) # XANES
         DAFS = collections.OrderedDict(zip(header, data))
         #DAFS = DAFSdata(*data)
-        
-        return data
+
+        return DAFS

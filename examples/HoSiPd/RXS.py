@@ -22,10 +22,10 @@ sim = fdmnes.fdmnes("A-L3_3_inp.txt")
 
 
 dafs220 = sim.get_DAFS((2,2,0), "sigma", "sigma", 0., verbose=True)
-pl.plot(dafs220.Energy, dafs220[1])
+pl.plot(*dafs220.values())
 
 dafs001 = sim.get_DAFS((0,0,1), "sigma", "sigma", 0., verbose=True)
-pl.plot(dafs001.Energy, dafs001[1])
+pl.plot(*dafs001.values())
 
 
 pl.show()

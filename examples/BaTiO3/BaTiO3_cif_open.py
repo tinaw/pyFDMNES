@@ -18,7 +18,7 @@ sim = fdmnes.fdmnes("BaTiO3.cif")
 os.chdir(DIR) # move to output folder
 
 sim.P.Range = (-15, 0.5, 50)
-sim.P.radius = 2.0
+sim.P.radius = 4.0
 sim.P.Rpotmax = 8.50
 sim.P.Green = True
 sim.P.cartesian =False

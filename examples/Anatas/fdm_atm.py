@@ -49,7 +49,7 @@ for x in np.linspace(0,4.,21):
     sim.WriteInputFile(fout, overwrite=True)
     sim.Run(verbose=False, wait=False)
     while True:
-        NumRunning = sum([sim.Status(i)==False for i in range(len(sim.proc))])
+        NumRunning = sum([job.is_running for job in sim.jobs.values()])
         print("%i procs running"%NumRunning)
         if NumRunning < 2:
             break

@@ -9,7 +9,7 @@ class test_fdmnes(unittest.TestCase):
 
     def setUp(self):
         self.dir = TempDirectory()
-        self.url = "http://rruff.geo.arizona.edu/AMS/CIF_text_files/13750_cif.txt"
+        self.url = "http://www.crystallography.net/cod/1000058.cif"
         self.element = "Ti"
         self.edge = "K"
         self.fermilevel = 4.9664
@@ -41,7 +41,7 @@ class test_fdmnes(unittest.TestCase):
 
         sim.Run(wait=False)
         while True:
-            NumRunning = sum(sim.Status(i)==False for i in range(len(sim.proc)))
+            NumRunning = len(list(sim.jobs.get_running()))
             if NumRunning == 0:
                 break
             time.sleep(5)
