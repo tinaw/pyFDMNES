@@ -99,4 +99,4 @@ Z = {'Ac':89,
 'Zn':30,
 'Zr':40}
 
-symbols = dict([(val, key) for (key,val) in Z.iteritems()])
+symbols = dict([(val, key) for (key,val) in Z.items()])

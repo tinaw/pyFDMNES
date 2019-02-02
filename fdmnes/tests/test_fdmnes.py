@@ -2,7 +2,11 @@ import os
 import time
 import unittest
 from testfixtures import TempDirectory
-import urllib
+if os.sys.version_info[0]<3:
+    import urllib
+else:
+    import urllib.request as urllib
+
 from ..pyFDMNES import fdmnes
 
 class test_fdmnes(unittest.TestCase):

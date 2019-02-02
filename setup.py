@@ -67,6 +67,10 @@ setup( name = "fdmnes",
        long_description = """
         Python interface to the X-Ray Spectroscopy Simulation software FDMNES
         """,
+        install_requires=[
+                      'numpy',
+                      'PyCifRW'
+                     ],
        cmdclass=cmdclass,
        test_suite="fdmnes.tests.test_all.test_suite"
       )

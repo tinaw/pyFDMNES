@@ -31,5 +31,5 @@ Then start a command line and change to this directory.
 
 3) Test the installation:
 
-    i) python -m fdmnes.test.test_all
+    i) python -m fdmnes.tests.test_all
 

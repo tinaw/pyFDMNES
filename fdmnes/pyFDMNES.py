@@ -13,17 +13,20 @@
 import os
 os.environ["OPENBLAS_MAIN_FREE"] = '1'
 import numpy as np
-import StringIO
-import elements
+#import BytesIO
 import subprocess
 import collections
-import settings
 import itertools
 import time
 
+from . import settings
+from . import elements
 from .resources import resource_filename
 from .parse import keyword_exists, parse_input_file, parse_bavfile, param2str, mkfloat
 
+
+if os.sys.version_info[0] > 2:
+    long = int
 
 try:
     import ConfigParser as configparser
@@ -82,7 +85,7 @@ class Parameters(dict):
             for key in value:
                 self.__setitem__(key, value[key])
         else:
-            raise TypeError, 'expected dict'
+            raise TypeError('expected dict')
 
     def __setitem__(self, key, value):
         keyset = keyword_exists(key)
@@ -119,9 +122,9 @@ class Parameters(dict):
 
 
     def __getitem__(self, key):
-        if dict.has_key(self, key):
+        if key in self:
             return dict.__getitem__(self, key)
-        elif settings.GroupMembers.has_key(key):
+        elif key in settings.GroupMembers:
             Group = getattr(settings.Defaults, settings.GroupMembers[key])
             return Group[key]
         else:
@@ -131,7 +134,7 @@ class Parameters(dict):
     __getattr__ = __getitem__
 
     def __dir__(self):
-        return dir(dict) + self.keys()
+        return dir(dict) + list(self.keys())
 
 
 
@@ -295,7 +298,8 @@ class fdmnes(object):
             else:
                 fdmnes_path = conf.get("global", "fdmnes_path")
 
-        fdmnes_path = os.path.realpath(fdmnes_path)        
+        fdmnes_path = os.path.realpath(fdmnes_path)
+        print("Using FDMNES at %s"%fdmnes_path)
         self.fdmnes_dir = os.path.dirname(fdmnes_path)
         self.fdmnes_exe = fdmnes_path
         fdmnes_bin = os.path.basename(fdmnes_path)
@@ -343,11 +347,11 @@ class fdmnes(object):
                  elif end == ".txt":
                      self.LoadInputFile(structure)
             else:
-                raise ValueError
+                raise ValueError("Input not understood")
         except Exception as emsg:
-            raise ValueError(
-                "Invalid input for structure (file not found): %s%s%s"\
+            print("Invalid input for structure (file not found): %s%s%s"
                 %(str(structure), os.linesep, emsg))
+            raise
 
 
     
@@ -377,13 +381,13 @@ class fdmnes(object):
 
         position = tuple(position)
         #label = label.replace("_", "")
-        SymList = elements.Z.keys()
+        SymList = list(elements.Z)
 
         labeltest = label.capitalize()
 
         if labeltest in SymList:
             # the label consists only of the element symbol
-            num = self.elements.values().count(labeltest) + 1
+            num = list(self.elements.values()).count(labeltest) + 1
             label += str(num) # produce a unique label
             self.elements[label] = labeltest
 
@@ -406,7 +410,7 @@ class fdmnes(object):
         self.positions[label] = position
         self.occupancy[label] = occupancy
         if resonant:
-            if self.P.has_key("Absorber"):
+            if "Absorber" in self.P:
                 self.P.Absorber += (len(self.positions),)
             else:
                 self.P.Absorber = (len(self.positions),)
@@ -448,8 +452,8 @@ class fdmnes(object):
             cb = cf.first_block()
         except Exception as e:
             print("File doesn't seem to be a valid .cif file: %s"%path)
-            print e
-            return
+            print(e)
+            raise
 
         self.Crystal = True
         # Reset Structure:
@@ -496,7 +500,7 @@ class fdmnes(object):
 
         for line in cb.GetLoop("_atom_site_label"):
             label = str(line._atom_site_label)
-	    if hasattr(line, "_atom_site_type_symbol"):
+            if hasattr(line, "_atom_site_type_symbol"):
                 symbol = line._atom_site_type_symbol
                 symbol = filter(str.isalpha, symbol)
             else:
@@ -517,7 +521,7 @@ class fdmnes(object):
         """
             Checks configured FDMNES parameters for consistency.
         """
-        if not self.P.has_key(keyw):
+        if not keyw in self.P:
             return True
         else:
             value = self.P[keyw]
@@ -528,7 +532,7 @@ class fdmnes(object):
                 raise ConsistencyError(errmsg="Number of given electron "
                     "configurations (%i) does not match number of different "
                     "species in structure (%i)"%(numconf,numspecies))
-            if self.P.has_key("Atom_conf") and len(self.P.Atom_conf):
+            if "Atom_conf" in self.P and len(self.P.Atom_conf):
                 raise ConsistencyError(errmsg="Electronic configuration"
                     "given twice: Parameters Atom and Atom_conf")
         return True
@@ -556,7 +560,7 @@ class fdmnes(object):
             if raiseError:
                 raise ConsistencyError(errmsg = errmsg)
             else:
-                print errmsg
+                print(errmsg)
                 return False
 
     
@@ -564,11 +568,11 @@ class fdmnes(object):
         if TestGroup=="all":
             TestGroup = ["SCF", "Convolution", "Extract", "RXS"]
         for Name in TestGroup:
-            if self.P.has_key(Name) and bool(self.P[Name]):
+            if Name in self.P and bool(self.P[Name]):
                 if Name in ["Convolution"] and \
-                   not Group.has_key(Name) and len(self.P.Calculation):
+                   not Name in Group and len(self.P.Calculation):
                     return True
-            elif Group.has_key(Name):
+            elif Name in Group:
                 return True
         return False
 
@@ -597,7 +601,7 @@ class fdmnes(object):
         output.append("  %g %g %g %g %g %g" %cell)
 
         self.check_parameters("Atom", settings.Defaults.Basic)
-        for label in self.positions.iterkeys():
+        for label in self.positions:
             if hasattr(self.P, "Atom") and len(self.P.Atom):
                 atomnum = [at[0] for at in self.P.Atom].index(self.Z[label])+1
             else:
@@ -634,7 +638,7 @@ class fdmnes(object):
         basepath, ext = os.path.splitext(path)
         dirname, basename = os.path.split(basepath)
 
-        conv = self.P.has_key("Convolution") and self.P.Convolution
+        conv = "Convolution" in self.P and self.P.Convolution
         convonly = bool(conv and len(self.P.Calculation))
 
         basename = basename.replace("_conv", "")
@@ -666,7 +670,7 @@ class fdmnes(object):
         for Group in settings.Defaults:
             if self._skip_group(Group):
                 continue
-            for keyw in Group.iterkeys():
+            for keyw in Group:
                 if keyw in self.P and self.P[keyw]!=Group[keyw]:
                     self.check_parameters(keyw, Group)
                     print("-> %s"%keyw)
@@ -676,7 +680,7 @@ class fdmnes(object):
                         output.append(value)
 
         # print empty line before each keyword
-        for keyw in self.P.keys():
+        for keyw in self.P:
             if keyw in output:
                 ind = output.index(keyw)
                 output.insert(ind, "")
@@ -691,7 +695,8 @@ class fdmnes(object):
             self.current.outfile = path_out
         
         with open(path, "wb") as f:
-            f.writelines(os.linesep.join(output))
+            f.write(os.linesep.join(output).encode())
+
 
     
     def Run(self, path=None, wait=True, logpath=None, verbose=False, 
@@ -718,7 +723,7 @@ class fdmnes(object):
 
         print("Processing: %s"%path)
         with open(fdmfile, "wb") as f:
-            f.writelines(os.linesep.join(output))
+            f.write(os.linesep.join(output).encode())
 
         if writeonly:
             return path
@@ -832,20 +837,20 @@ class fdmnes(object):
         structure = ParamIn["structure"]
         ParamIn = ParamIn["Param"]
 
-        if ParamIn.has_key("Extract") and ParamIn["Extract"]:
+        if "Extract" in ParamIn and ParamIn["Extract"]:
             bavfile = ParamIn["Extract"][0]
         else:
             bavfile = path_out + "_bav.txt"
 
-        if structure and structure.keys()[0].startswith("Crystal"):
+        if structure and list(structure)[0].startswith("Crystal"):
             self.Crystal = True
 
-        if all(map(ParamIn.has_key, ["Atom", "Atom_conf"])):
+        if all([k in ParamIn for k in ["Atom", "Atom_conf"]]):
             raise ConsistencyError(
                 "Only one of the keywords ``Atom'' and "\
                 "``Atom_conf'' may be given in the input file!")
 
-        for keyw in ParamIn.iterkeys():
+        for keyw in ParamIn:
             if not len(ParamIn[keyw]):
                 self.P[keyw] = True
                 continue
@@ -879,11 +884,11 @@ class fdmnes(object):
                 Values = Values[0]
             self.P[keyw] = Values
 
-        if structure and not structure.keys()[0].endswith("_p"):
-            structure = structure.values()[0]
+        if structure and not list(structure)[0].endswith("_p"):
+            structure = list(structure.values())[0]
             cell = map(float, structure.pop(0).split())
             self.a, self.b, self.c, self.alpha, self.beta, self.gamma = cell
-            if self.P.has_key("Atom") and len(self.P.Atom):
+            if "Atom" in self.P and len(self.P.Atom):
                 Z = lambda i: self.P.Atom[i-1][0]
             else:
                 Z = lambda i: i
@@ -915,7 +920,7 @@ class fdmnes(object):
 
 
         self.P.Convolution = True
-        if not self.P.has_key("Calculation"):
+        if not "Calculation" in self.P:
             self.P.Calculation = []
         if not self.P.Calculation and job.successful:
             num_absorb = job.bavinfo["num_absorber"]
@@ -926,7 +931,7 @@ class fdmnes(object):
             calclist = map(lambda s: path_out + s + ".txt", calclist)
             self.P.Calculation.extend(calclist)
 
-        foundCalc = map(os.path.isfile, self.P.Calculation)
+        foundCalc = list(map(os.path.isfile, self.P.Calculation))
         if not foundCalc or not foundCalc[0] or not any(foundCalc):      
             raise ValueError(
                 "``Calculation'' files for Convolution not found or "\
@@ -1001,7 +1006,7 @@ class fdmnes(object):
                 with open(fp, "r") as fh:
                     content = fh.readlines()
                 content = map(str.strip, content)
-                findEne = map(lambda s: s.startswith("Energy"), content)
+                findEne = list(map(lambda s: s.startswith("Energy"), content))
                 ind = (findEne.index(True)+1) if any(findEne) else 0
                 data = np.loadtxt(fp, skiprows = ind)
             else:
@@ -1093,15 +1098,14 @@ class fdmnes(object):
                 calclist = ["_%.i"%(i+1) for i in range(num_absorb)]
             else:
                 calclist = [""]
-            fpath = map(lambda s: self.current.outfile + "_rxs" + s + ".txt", 
-                        calclist)
+            fpath = ["%s_rxs%s.txt"%(self.current.outfile, s)  for s in calclist]
 
         self.current.rxsfile = fpath
 
         with open(fpath, "r") as fh:
             content = fh.readlines()
-        content = map(str.strip, content)
-        findEne = map(lambda s: s.startswith("Energy"), content)
+        content = list(map(str.strip, content))
+        findEne = list(map(lambda s: s.startswith("Energy"), content))
         ind = (findEne.index(True)+1) if any(findEne) else 0
         header = content[ind-1] if ind>0 else ""
         header = header.replace("(","").replace(")", "")

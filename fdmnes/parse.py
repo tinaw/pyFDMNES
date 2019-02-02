@@ -29,15 +29,15 @@ def mkfloat(string):
 def keyword_exists(key):
     key = key.lower()
     keyset = None
-    if settings.synonyms.has_key(key):
+    if key in settings.synonyms:
         return settings.synonyms[key]
     for Group in settings.Defaults:
         keys = Group.keys()
         keysl = map(str.lower, keys)
-        keysmask = map(lambda s: s==key, keysl)
+        keysmask = [s==key for s in keysl]
         if any(keysmask):
             i = keysmask.index(True)
-            keyset = keys[i]
+            keyset = list(keys)[i]
             break
     return keyset
 
@@ -52,6 +52,7 @@ def parse_input_file(fpath, outpath_only=False):
     content = map(lambda s: s.split("!")[0], content)
     content = map(str.strip, content)
     content = filter(lambda s: bool(s), content)
+    content = list(content) #python3
 
     Param = dict()
     keyw = None
@@ -83,7 +84,8 @@ def parse_input_file(fpath, outpath_only=False):
 
     structure_keyw = ["Crystal", "Crystal_t", "Crystal_p",
                       "Molecule", "Molecule_t"]
-    found_structure = map(Param.has_key, structure_keyw)
+
+    found_structure = [(k in Param) for k in structure_keyw]
 
     if sum(found_structure) > 1:
         raise ConsistencyError(
@@ -99,7 +101,7 @@ def parse_input_file(fpath, outpath_only=False):
 
     if conv:
         bavfile = ""
-    elif Param.has_key("Extract") and Param["Extract"][0]:
+    elif "Extract" in Param and Param["Extract"][0]:
         bavfile = Param["Extract"][0]
     else:
         bavfile = path_out + "_bav.txt"
@@ -112,12 +114,12 @@ def parse_input_file(fpath, outpath_only=False):
 
 def parse_bavfile(bavfile):
     bavinfo = {}
-    with open(bavfile, "r") as bf:
+    with open(bavfile, "rb") as bf:
         bavcont = bf.read()
         bf.seek(-60, 2)
-        tail = map(str.strip, bf.readlines())
+        tail = [s.decode().strip() for s in bf.readlines()]
+        #tail = map(str.strip, bf.readlines())
     bavinfo["success"] = (tail[-1]=='Have a beautiful day !')
-    bavinfo["num_absorber"] = \
-                         bavcont.count("Index of the absorbing atom")
+    bavinfo["num_absorber"] = bavcont.count(b"Index of the absorbing atom")
 
     return bavinfo
