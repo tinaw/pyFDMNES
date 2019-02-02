@@ -26,7 +26,8 @@ Certainly, FDMNES evolved and not all parameters are correctly represented in th
 
 
 # Installation
-change dir to the downloaded repository (where the setup.py is found)
+change dir to the downloaded repository (where the setup.py is found) and modify the `setup.cfg`
+
 ## using pip (recommended)
     pip install . [--user]
 
