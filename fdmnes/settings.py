@@ -74,6 +74,7 @@ Defaults.RXS['Step_azim'] = 2.
 Defaults.RXS['Zero_azim'] = (0.,0.,0.) # 3-tuple float
 Defaults.RXS['Selec_input'] = ()
 Defaults.RXS['Selec_out'] = ()
+Defaults.RXS['Energy'] = ()
 
 
 Defaults.Spin["Axe_spin"] = (0.,0.,1.) # 3-tuple float
