@@ -772,6 +772,12 @@ class fdmnes(object):
                 logfile.close()
         return job
 
+    def wait(self):
+        for job in self.jobs.get_running():
+            self.Status(job.id)
+            job.wait()
+        return True
+            
 
     def Status(self, jobID=None, full_output=False, verbose=True):
         """ 
