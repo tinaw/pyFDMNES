@@ -182,7 +182,7 @@ class Job(object):
         self.id = _id = next(self._ids)
         self.path = path
         self.command = command
-        self.process = subprocess.Popen(command, stdout=stdout)
+        self.process = subprocess.Popen(command, stdout=stdout, shell=True)
         self.finished = False
         self._successful = False
 
