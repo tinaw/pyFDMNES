@@ -61,7 +61,7 @@ def parse_input_file(fpath, outpath_only=False):
     while content:
         line = content.pop(0)
         lline = line.lower()
-        if lline == "filout" or lline=="conv_out":
+        if lline == "filout" or lline=="conv_out" or lline=="selec_out":
             path_out = content.pop(0)
             if outpath_only:
                 return path_out

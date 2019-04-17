@@ -501,7 +501,7 @@ class fdmnes(object):
         for line in cb.GetLoop("_atom_site_label"):
             label = str(line._atom_site_label)
             if hasattr(line, "_atom_site_type_symbol"):
-                symbol = line._atom_site_type_symbol
+                symbol = str(line._atom_site_type_symbol)
                 symbol = filter(str.isalpha, symbol)
             else:
                 symbol = filter(str.isalpha, label)
