@@ -505,6 +505,7 @@ class fdmnes(object):
                 symbol = filter(str.isalpha, symbol)
             else:
                 symbol = filter(str.isalpha, label)
+            symbol = "".join(symbol)
             px = mkfloat(line._atom_site_fract_x)
             py = mkfloat(line._atom_site_fract_y)
             pz = mkfloat(line._atom_site_fract_z)
