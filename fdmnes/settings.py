@@ -10,7 +10,9 @@ Groups = ["Basic",
           "Convolution", 
           "Extract", 
           "Experiment",
-          "Technical"]
+          "Parameter",
+          "Technical",
+          "Fit"]
 
 
 ParamTypes = namedtuple("ParamTypes", Groups)
@@ -30,10 +32,12 @@ Defaults.Basic["Atom_conf"] = []
 Defaults.Basic["Cartesian"] = False
 Defaults.Basic["Crystal_p"] = ""
 Defaults.Basic["Density"] = False
+Defaults.Basic["Density_all"] = False
 Defaults.Basic["Edge"] = "K"
 Defaults.Basic["Energpho"] = False
 Defaults.Basic["Green"] = False
-Defaults.Basic["Hubbard"] = 0.
+Defaults.Basic["Hubbard"] = ()
+Defaults.Basic["Hubbard_z"] = [] # list of 2-tuples
 Defaults.Basic["Magnetism"] = False
 Defaults.Basic["Memory_save"] = False
 Defaults.Basic["Polarize"] = []
@@ -46,6 +50,7 @@ Defaults.Basic["Rpotmax"] = 0.
 Defaults.Basic["Screening"] = []
 Defaults.Basic["TDDFT"] = False
 Defaults.Basic["Z_absorber"] = 0
+Defaults.Basic["Full_atom"] = False
 #Defaults.Basic["fprim"] = False
 
 Defaults.Multipole['Dipmag'] = False
@@ -128,12 +133,24 @@ Defaults.Convolution["Selec_core"] = -1
 Defaults.Convolution["Thomson"] = nan
 Defaults.Convolution["Xan_atom"] = False
 
+Defaults.Parameter["Par_ecent"] = (0.,0.,0)
+Defaults.Parameter["Par_elarg"] = (0.,0.,0)
+Defaults.Parameter["Par_efermi"] = (0.,0.,0)
+Defaults.Parameter["Par_gamma_hole"] = (0.,0.,0)
+Defaults.Parameter["Par_gamma_max"] = (0.,0.,0)
+Defaults.Parameter["Par_gauss"] = (0.,0.,0)
+Defaults.Parameter["Par_shift"] = (0.,0.,0)
+Defaults.Parameter["Par_aseah"] = (0.,0.,0)
+Defaults.Parameter["Par_abs_u_iso"] = (0.,0.,0)
+
+
 Defaults.Extract["Extract"] = ""
 Defaults.Extract["Extractpos"] = ()
 Defaults.Extract["Extractsym"] = []
 Defaults.Extract["Rotsup"] = []
 
 Defaults.Experiment["Gen_shift"] = (0.,0.,0)
+Defaults.Experiment["Experiment"] = ""
 Defaults.Experiment["Emin"] = nan
 Defaults.Experiment["Emax"] = nan
 Defaults.Experiment["Kev"] = False

@@ -466,7 +466,7 @@ class fdmnes(object):
         if cb.has_key("_symmetry_int_tables_number"):
             sg_num = int(cb["_symmetry_int_tables_number"])
             self.sg_num = str(sg_num)
-
+        #_space_group_name_H-M_alt
         if cb.has_key("_symmetry_space_group_name_h-m"):
             self.sg_name = cb["_symmetry_space_group_name_h-m"]
             self.sg_name = "".join(self.sg_name.split())
@@ -505,6 +505,7 @@ class fdmnes(object):
                 symbol = filter(str.isalpha, symbol)
             else:
                 symbol = filter(str.isalpha, label)
+            symbol = "".join(symbol)
             px = mkfloat(line._atom_site_fract_x)
             py = mkfloat(line._atom_site_fract_y)
             pz = mkfloat(line._atom_site_fract_z)
@@ -543,7 +544,7 @@ class fdmnes(object):
             return True
         else:
             sgstr = map(lambda s: ", ".join(s), self.spacegroups)
-            foundgroup = filter(lambda s: sg in s, sgstr)
+            foundgroup = list(filter(lambda s: sg in s, sgstr))
             message = os.linesep.join(foundgroup)
             if len(foundgroup):
                 message = "Did you mean one of the following groups?:%s%s"\
@@ -565,15 +566,13 @@ class fdmnes(object):
 
     
     def _skip_group(self, Group, TestGroup="all"):
+        ConvGroups = ["Convolution", "Experiment", "Parameter"]
         if TestGroup=="all":
             TestGroup = ["SCF", "Convolution", "Extract", "RXS"]
-        for Name in TestGroup:
-            if Name in self.P and bool(self.P[Name]):
-                if Name in ["Convolution"] and \
-                   not Name in Group and len(self.P.Calculation):
-                    return True
-            elif Name in Group:
-                return True
+        if Group in TestGroup and not bool(self.P[Group]):
+            return True
+        if self.P.Convolution and len(self.P.Calculation) and Group not in ConvGroups:
+            return True
         return False
 
     def write_structure(self):
@@ -667,11 +666,15 @@ class fdmnes(object):
             self.P.Calculation = []
             output.extend(self.write_structure())
 
-        for Group in settings.Defaults:
-            if self._skip_group(Group):
+        for GroupName in settings.Defaults._fields:
+            Group = getattr(settings.Defaults, GroupName)
+            if self._skip_group(GroupName):
                 continue
-            for keyw in Group:
+            for ik, keyw in enumerate(Group):
                 if keyw in self.P and self.P[keyw]!=Group[keyw]:
+                    if GroupName=="Parameter":
+                        output.append("")
+                        output.append("Parameter")
                     self.check_parameters(keyw, Group)
                     print("-> %s"%keyw)
                     value = param2str(self.P[keyw])
@@ -681,7 +684,7 @@ class fdmnes(object):
 
         # print empty line before each keyword
         for keyw in self.P:
-            if keyw in output:
+            if keyw in output and not keyw.startswith("Par_"):
                 ind = output.index(keyw)
                 output.insert(ind, "")
         output.append("")
