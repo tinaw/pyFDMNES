@@ -702,14 +702,33 @@ class fdmnes(object):
 
 
     
-    def Run(self, path=None, wait=True, logpath=None, verbose=False, 
-                  writeonly = False, command = None):
+    def Run(self, path=None, wait=True, delay=5, logpath=None, verbose=False,
+                  writeonly=False, command=None):
         """
             Method to write the ``fdmfile.txt'' and, subsequently, to start
             the FDMNES simulation. The simulation will be perfomed for the
             specified input file path.  If it is None, the current one will be
             run.
 
+            Inputs:
+                path : string
+                    Path for fdmnes input file to be run
+                wait : bool
+                    If True, waits for the process to finish.
+                delay : float
+                    Time in seconds to wait after sending Job to background.
+                    This has proven to be important if starting several jobs
+                    in a row. It is ignored if `wait==True`.
+                logpath : string
+                    Path for log file. It is derived from input file path
+                    by default.
+                verbose : bool
+
+                writeonly : book
+                    If True, only writes the `fdmfile.txt`
+                command : string
+                    path to fdmnes executable. By default this
+                    is given by self.fdmnes_exe
         """
         if path is None:
             path = self.current.infile
@@ -766,6 +785,7 @@ class fdmnes(object):
             else:
                 print("FDMNES process #%i started in background."%job.id)
                 print("See the ``Status'' method for details.")
+                time.sleep(delay)
         except Exception as e:
             print("An error occured when running FDMNES command:")
             print(command)
