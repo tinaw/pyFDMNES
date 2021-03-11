@@ -99,7 +99,10 @@ class Parameters(dict):
             Type = type(DefVal)
             try:
                 if Type is tuple:
-                    value = tuple((value),)
+                    if isinstance(value, tuple):
+                        pass
+                    else:
+                        value = tuple((value,))
                 else:
                     value = Type(value)
             except TypeError:
