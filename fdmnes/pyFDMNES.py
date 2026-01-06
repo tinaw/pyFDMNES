@@ -294,33 +294,35 @@ class fdmnes(object):
 
         ### FIND FDMNES ####################################################
         if fdmnes_path==None:
-            if not conf.has_option("global", "fdmnes_path"):
-                raise ValueError(
-                    "No entry for ``fdmnes_path'' found in config file:%s%s"\
-                    %(os.linesep, conffile))
-            else:
+            if conf.has_option("global", "fdmnes_path"):
                 fdmnes_path = conf.get("global", "fdmnes_path")
-
-        fdmnes_path = os.path.realpath(fdmnes_path)
-        print("Using FDMNES at %s"%fdmnes_path)
-        self.fdmnes_dir = os.path.dirname(fdmnes_path)
-        self.fdmnes_exe = fdmnes_path
-        fdmnes_bin = os.path.basename(fdmnes_path)
-
-        for fname in [fdmnes_bin]:
-            fpath = os.path.join(self.fdmnes_dir, fname)
-            if not os.path.isfile(fpath):
+                fdmnes_path = os.path.realpath(fdmnes_path)
+            if os.environ['FDMNES']:
+                fdmnes_path = os.environ['FDMNES']
+            if fdmnes_path is None or not fdmnes_path:
                 raise ValueError(
-                    """
-                        File %s not found in %s
+                    "No valid FDMNES environment variable nor entry for 'fdmnes_path' found in config file:%s%s"\
+                    %(os.linesep, conffile))
 
-                        Have you entered a valid path in %s?
-                        It must point on the fdmnes executable.
-                    """%(fname, self.fdmnes_dir, conffile))
+        print("Using FDMNES %s" % fdmnes_path)
+        # self.fdmnes_dir = os.path.dirname(fdmnes_path)
+        self.fdmnes_exe = fdmnes_path
+        # fdmnes_bin = os.path.basename(fdmnes_path)
 
-        fpath = os.path.join(self.fdmnes_dir, "spacegroup.txt")
-        if not os.path.isfile(fpath):
-            fpath = resource_filename("spacegroup.txt")
+#        for fname in [fdmnes_bin]:
+#            fpath = os.path.join(self.fdmnes_dir, fname)
+#            if not os.path.isfile(fpath):
+#                print(
+#                    """WARNING:
+#                        File %s not found in %s
+
+#                        Have you entered a valid path in %s?
+#                        It must point on the fdmnes executable.
+#                    """%(fname, self.fdmnes_dir, conffile))
+
+#        fpath = os.path.join(self.fdmnes_dir, "spacegroup.txt")
+#        if not os.path.isfile(fpath):
+        fpath = resource_filename("spacegroup.txt")
 
         with open(fpath, "r") as fh:
             sgcont = filter(lambda s: s.startswith("*"), fh.readlines())
