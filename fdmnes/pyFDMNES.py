@@ -297,14 +297,14 @@ class fdmnes(object):
             if conf.has_option("global", "fdmnes_path"):
                 fdmnes_path = conf.get("global", "fdmnes_path")
                 fdmnes_path = os.path.realpath(fdmnes_path)
-            if os.environ['FDMNES']:
+            if 'FDMNES' in os.environ and os.environ['FDMNES']:
                 fdmnes_path = os.environ['FDMNES']
             if fdmnes_path is None or not fdmnes_path:
                 raise ValueError(
                     "No valid FDMNES environment variable nor entry for 'fdmnes_path' found in config file:%s%s"\
                     %(os.linesep, conffile))
 
-        print("Using FDMNES %s" % fdmnes_path)
+        print("Using FDMNES=%s" % fdmnes_path)
         # self.fdmnes_dir = os.path.dirname(fdmnes_path)
         self.fdmnes_exe = fdmnes_path
         # fdmnes_bin = os.path.basename(fdmnes_path)
@@ -323,6 +323,9 @@ class fdmnes(object):
 #        fpath = os.path.join(self.fdmnes_dir, "spacegroup.txt")
 #        if not os.path.isfile(fpath):
         fpath = resource_filename("spacegroup.txt")
+        if 'FDMNES_SPACEGROUP' in os.environ and os.environ['FDMNES_SPACEGROUP'] and os.path.exists(os.environ['FDMNES_SPACEGROUP']):
+          fpath = os.environ['FDMNES_SPACEGROUP']
+        print("Using FDMNES_SPACEGROUP=%s" % fpath)
 
         with open(fpath, "r") as fh:
             sgcont = filter(lambda s: s.startswith("*"), fh.readlines())
