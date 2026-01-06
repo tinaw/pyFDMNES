@@ -22,11 +22,11 @@ Certainly, FDMNES evolved and not all parameters are correctly represented in th
 - python 2.7 or 3
 - numpy
 - PyCifRW
-- fdmnes (version > March 28th 2014)
+- fdmnes (version > March 28th 2014) from e.g. https://fdmnes.neel.cnrs.fr/
 
 
 # Installation
-change dir to the downloaded repository (where the setup.py is found) and modify the `setup.cfg`
+Change dir to the downloaded repository (where the setup.py is found) and modify the `setup.cfg`.
 
 ## using pip (recommended)
     pip install . [--user]
@@ -35,4 +35,16 @@ change dir to the downloaded repository (where the setup.py is found) and modify
     python setup.py install [--user]
 
 # Usage
-See `examples` folder
+See `examples` folder.
+
+You may set the `FDMNES` environment variable to specify the FDMNES executable command,
+for instance when using MPI:
+```
+FDMNES='mpirun fdmnes'
+FDMNES='/path/to/fdmnes_linux_serial'
+FDMNES='/path/to/fdmnes_linux_parallel'
+```
+The default is to use the executable defined in the `setup.cfg` file of the pyFDMNES package.
+
+You may as well set the `FDMNES_SPACEGROUP` environment variable to specify the `spacegroup.txt` file which defines the space-group operators. The default is to use the file provided by the pyFDMNES package.
+

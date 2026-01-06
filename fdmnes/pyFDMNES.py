@@ -277,6 +277,10 @@ class fdmnes(object):
                             or
                                 - detailed name of space group 
                                   (including setting)
+            The FDMNES environment variable can be set from the FDMNES
+            environment variable. The space-group list can be set from the 
+            FDMNES_SPACEGROUP environment variable, or defaults to the one from
+            the pyFDMNES package.
         """
         self.positions = collections.OrderedDict() # symmetric unit
         self.Defaults = settings.Defaults
