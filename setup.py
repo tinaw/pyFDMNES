@@ -25,7 +25,7 @@ def fdmnes_path():
     else:
         fdmnes_path = conf.get("global", "fdmnes_path")
     if not os.path.isfile(fdmnes_path):
-        raise IOError("File not found: {}\Please edit file ``setup.cfg''".format(fdmnes_path))
+        raise IOError("File not found: {}\nPlease edit file ``setup.cfg''".format(fdmnes_path))
     return fdmnes_path
 
 def create_ini(fdmnes_path):

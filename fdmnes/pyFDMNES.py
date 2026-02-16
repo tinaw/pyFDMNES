@@ -277,6 +277,10 @@ class fdmnes(object):
                             or
                                 - detailed name of space group 
                                   (including setting)
+            The FDMNES environment variable can be set from the FDMNES
+            environment variable. The space-group list can be set from the 
+            FDMNES_SPACEGROUP environment variable, or defaults to the one from
+            the pyFDMNES package.
         """
         self.positions = collections.OrderedDict() # symmetric unit
         self.Defaults = settings.Defaults
@@ -294,33 +298,38 @@ class fdmnes(object):
 
         ### FIND FDMNES ####################################################
         if fdmnes_path==None:
-            if not conf.has_option("global", "fdmnes_path"):
-                raise ValueError(
-                    "No entry for ``fdmnes_path'' found in config file:%s%s"\
-                    %(os.linesep, conffile))
-            else:
+            if conf.has_option("global", "fdmnes_path"):
                 fdmnes_path = conf.get("global", "fdmnes_path")
-
-        fdmnes_path = os.path.realpath(fdmnes_path)
-        print("Using FDMNES at %s"%fdmnes_path)
-        self.fdmnes_dir = os.path.dirname(fdmnes_path)
-        self.fdmnes_exe = fdmnes_path
-        fdmnes_bin = os.path.basename(fdmnes_path)
-
-        for fname in [fdmnes_bin]:
-            fpath = os.path.join(self.fdmnes_dir, fname)
-            if not os.path.isfile(fpath):
+                fdmnes_path = os.path.realpath(fdmnes_path)
+            if 'FDMNES' in os.environ and os.environ['FDMNES']:
+                fdmnes_path = os.environ['FDMNES']
+            if fdmnes_path is None or not fdmnes_path:
                 raise ValueError(
-                    """
-                        File %s not found in %s
+                    "No valid FDMNES environment variable nor entry for 'fdmnes_path' found in config file:%s%s"\
+                    %(os.linesep, conffile))
 
-                        Have you entered a valid path in %s?
-                        It must point on the fdmnes executable.
-                    """%(fname, self.fdmnes_dir, conffile))
+        print("Using FDMNES=%s" % fdmnes_path)
+        # self.fdmnes_dir = os.path.dirname(fdmnes_path)
+        self.fdmnes_exe = fdmnes_path
+        # fdmnes_bin = os.path.basename(fdmnes_path)
 
-        fpath = os.path.join(self.fdmnes_dir, "spacegroup.txt")
-        if not os.path.isfile(fpath):
-            fpath = resource_filename("spacegroup.txt")
+#        for fname in [fdmnes_bin]:
+#            fpath = os.path.join(self.fdmnes_dir, fname)
+#            if not os.path.isfile(fpath):
+#                print(
+#                    """WARNING:
+#                        File %s not found in %s
+
+#                        Have you entered a valid path in %s?
+#                        It must point on the fdmnes executable.
+#                    """%(fname, self.fdmnes_dir, conffile))
+
+#        fpath = os.path.join(self.fdmnes_dir, "spacegroup.txt")
+#        if not os.path.isfile(fpath):
+        fpath = resource_filename("spacegroup.txt")
+        if 'FDMNES_SPACEGROUP' in os.environ and os.environ['FDMNES_SPACEGROUP'] and os.path.exists(os.environ['FDMNES_SPACEGROUP']):
+          fpath = os.environ['FDMNES_SPACEGROUP']
+        print("Using FDMNES_SPACEGROUP=%s" % fpath)
 
         with open(fpath, "r") as fh:
             sgcont = filter(lambda s: s.startswith("*"), fh.readlines())
